@@ -1,0 +1,28 @@
+complex.crd.1627 (MM)
+&cntrl
+ cut = 999.0,
+ dielc = 1.0,
+ extdiel = 80.0,
+ gbsa = 2,
+ idecomp = 4,
+ igb = 2,
+ imin = 1,
+ intdiel = 1.0,
+ maxcyc = 1,
+ ncyc = 0,
+ nsnb = 99999,
+ ntb = 0,
+ ntf = 1,
+ offset = 0.09,
+ saltcon = 0.0,
+ scee = 1.2,
+ scnb = 2.0,
+ surften = 0.0072,
+&end
+Residues for decomposition
+LRES 1 709
+END
+Residues to print
+RES 1 709
+END
+END

@@ -1,0 +1,37 @@
+% Runs curl calcuation for several essential modes
+for this_ev = 1:5
+    the_curl = do_hayward_curl(this_ev, ev_N, ev_C, ev_CA, ev_CB, solute_N, solute_C, solute_CA, solute_CB);
+    filename = ['curl.ev', num2str(this_ev), '.out'];
+    save(filename, 'the_curl', '-ascii');
+    % Create a similarity matrix
+    num_atoms = size(the_curl, 1); % Redundant but whatever
+    eucdist = zeros(num_atoms, num_atoms); % Euclidean distance (pairwise)
+    curlsim = zeros(num_atoms, num_atoms); % Curl similarity (pairwise)
+    for i = 1:num_atoms
+        for j = 1:i
+            eucdist(i, j) = sqrt(sum((solute_CA(i, :) - solute_CA(j, :)) .^ 2));
+            eucdist(j, i) = eucdist(i, j);
+            a = the_curl(i, :) / norm(the_curl(i, :));
+            b = the_curl(j, :) / norm(the_curl(j, :));
+            
+            curlsim(i, j) = dot(a, b);
+            curlsim(j, i) = curlsim(i, j);
+        end
+    end
+    
+    % Calculate the dissimilarity matrix!
+    % This is important!!
+    eucdist = eucdist / max(max(eucdist));
+    %similarity = (1 ./ eucdist) .* curlsim;
+    dissimilarity = (eucdist > 0.25) .* (curlsim < 0.5);
+    
+    %similarity(isnan(similarity)) = 0;
+    %similarity(isinf(similarity)) = 0;
+    dissimilarity(isnan(dissimilarity)) = 0;
+    dissimilarity(isinf(dissimilarity)) = 0;
+    
+    filename = ['dissimilarity.ev', num2str(this_ev), '.out'];
+    save(filename, 'dissimilarity', '-ascii');
+    %eucdist_thres = (eucdist > 0.3) .* ones(num_atoms, num_atoms);
+    %save('eucdist.test.out', 'eucdist_thres', '-ascii');
+end
