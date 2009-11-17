@@ -16,6 +16,12 @@ def validate(condition, msg="Argh!"):
     if not condition:
         raise Error(msg)
 
+def float3(val):
+    """Converts to float, rounding to 3 decimal places. Used for coercing rst files into
+    PDB-level precision to avoid problems with finding softcore regions due to rounding`."""
+
+    return round(float(val), 3)
+
 class AmberSystem:
     # POINTERS block indices, stolen from the prmtop format spec on ambermd.org
     NATOM  = 0 # total number of atoms 
@@ -122,14 +128,14 @@ class AmberSystem:
         # There are 6 coordinates, 12 characters each per line
         while coords_left > 0:
             line = fp.readline()
-            self.x.append(float(line[0:12]))
-            self.y.append(float(line[12:24]))
-            self.z.append(float(line[24:36]))
+            self.x.append(float3(line[0:12]))
+            self.y.append(float3(line[12:24]))
+            self.z.append(float3(line[24:36]))
             coords_left -= 3
             if coords_left >= 3:
-                self.x.append(float(line[36:48]))
-                self.y.append(float(line[48:60]))
-                self.z.append(float(line[60:72]))
+                self.x.append(float3(line[36:48]))
+                self.y.append(float3(line[48:60]))
+                self.z.append(float3(line[60:72]))
                 coords_left -= 3
                 
         validate(coords_left == 0, \
@@ -393,13 +399,15 @@ def make_atom_table(s):
 
     table = {}
     for i in xrange(s.num_atoms()):
-        key = "%4s%.1f%.1f%.1f" % (s.blocks['ATOM_NAME'][i], s.x[i], s.y[i], s.z[i])
+        key = "%4s%.1f,%.1f,%.1f" % (s.blocks['ATOM_NAME'][i], s.x[i], s.y[i], s.z[i])
         table[key] = i + 1
     return table
 
 def sclist_too_big_error(sclist, prmtop):
     """Convenience method to print an error when one of the softcore regions is very big, which
     more likely than not indicates that the structures are totally wrong or messed up"""
+
+    # print >>sys.stderr, sorted(sclist)
 
     raise Error("Predicted a suspiciously large softcore region of %d atoms in %s.\n" \
     "Please check that your structures have the same coordinates except for the\n" \
