@@ -5,7 +5,7 @@
 // $ $AMBERHOME/bin/sander -p foo.top -c foo ...
 package main
 import ( "fmt"; "os"; "flag"; "math"; )
-import ( "amber"; )
+import ( "what"; )
 
 func main() {
     var trjFilename string;
@@ -17,11 +17,21 @@ func main() {
     flag.BoolVar(&hasBox, "hasbox", true, "Whether the trajectory records periodic boxes");
     flag.Parse();
     
-    GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+    coords := GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+    DumpCoordsAsRst(coords);
+}
+
+
+func DumpCoordsAsRst(coords []float32) {
+    fmt.Printf("We are the champions\n%d\n", len(coords)/3);
+    for i := 0; i < len(coords); i++ {
+        if i > 0 && i % 6 == 0 { fmt.Printf("\n") }
+        fmt.Printf("%12.6f", coords[i]);
+    }
 }
 
 // Read bytes
-func readLine(fp *os.File) string {
+func readLineFromOpenFile(fp *os.File) string {
     buf := make([]byte, 256);
     var i int;
     fp.Read(buf[0:1]);
@@ -37,8 +47,8 @@ func GetFrameFromTrajectory(filename string, frame, numAtoms int, hasBox bool) [
     }
     defer fp.Close();
     
-    //
-    header := readLine(fp);
+    // Eat header
+    readLineFromOpenFile(fp);
     // In an mdcrd trajectory, there are 10 coordinates per line,
     // but in a single snapshot file there are 6, for some reason.
     linesPerFrameTrj := int(math.Ceil(float64(numAtoms*3) / 10));
@@ -46,14 +56,19 @@ func GetFrameFromTrajectory(filename string, frame, numAtoms int, hasBox bool) [
     // 8 bytes per coordinate, 8*3+2+1 bytes for box
     bytesPerFrame := numAtoms*8*3 + linesPerFrameTrj;
     if hasBox { bytesPerFrame += 8*3+2+1 }
-//    fmt.Fprintf(os.Stderr, "Bytes per frame: %d, lines per frame: %d; seeking to %d\n", bytesPerFrame, 
-//        linesPerFrameTrj, frame * bytesPerFrame);
+    //    fmt.Fprintf(os.Stderr, "Bytes per frame: %d, lines per frame: %d; seeking to %d\n", bytesPerFrame, 
+    //        linesPerFrameTrj, frame * bytesPerFrame);
     fp.Seek(int64(frame * bytesPerFrame), 1); // Seek relative to current offset
-    fmt.Printf(header);
-    fmt.Printf(readLine(fp));
-    fmt.Printf(readLine(fp));
-    fmt.Printf(readLine(fp));
-    fmt.Printf(readLine(fp));
-    amber.Strtod("1.2");
-    return nil;
+    // fmt.Printf("%s\n%d\n", header, numAtoms);
+    // Read coordinates
+    coords := make([]float32, numAtoms*3);
+    buf := make([]byte, 8);
+    for i := 0; i < numAtoms*3; i++ {
+        // Eat newline every 10 coordinates
+        if i > 0 && i % 10 == 0 { fp.Read(buf[0:1]) }
+        fp.Read(buf);
+        coords[i] = float32(what.Atof64(string(buf)));
+        // if i < 150 { fmt.Printf("%f\n", coords[i]) }
+    }
+    return coords;
 }
