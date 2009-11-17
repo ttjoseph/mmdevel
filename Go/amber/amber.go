@@ -119,7 +119,7 @@ func LoadSystem(prmtopFilename, inpcrdFilename string) *System {
     
     // Eat header line
     s, err := prmtop.ReadString('\n');
-    fmt.Println(s);
+    //fmt.Println(s);
     
     // Get first FLAG line
     s, err = prmtop.ReadString('\n');
