@@ -61,6 +61,16 @@ func VectorAsFloat32Array(v *vector.Vector) []float32 {
     return data;
 }
 
+// Converts a Vector of strings to an array of int.
+func VectorAsIntArray(v *vector.Vector) []int {
+    data := make([]int, v.Len());
+    for i := 0; i < v.Len(); i++ {
+        x := strings.TrimSpace(v.At(i).(string));
+        data[i] = what.Atoi(x);
+    }
+    return data;
+}
+
 // Converts an array of strings to an array of float32.
 func StringArrayAsFloat32Array(v []string) []float32 {
     data := make([]float32, len(v));
