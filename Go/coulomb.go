@@ -51,7 +51,7 @@ func LennardJones(mol *amber.System, bondType []uint8) float32 {
     
         for atom_j := 0; atom_j < atom_i; atom_j++ {
             // Are these atoms connected by a bond or angle? If so, skip.
-            thisBondType := bondType[atom_i*numAtoms+atom_j];
+            thisBondType := bondType[atom_i*numAtoms + atom_j];
             if thisBondType & (BOND | ANGLE) != 0 { continue }
             // Calculate distance reciprocals
             offs_j := atom_j*3;
@@ -84,7 +84,7 @@ func LennardJones(mol *amber.System, bondType []uint8) float32 {
 // Calculates electrostatic interactions among all particles in an AmberSystem
 func Electro(mol *amber.System, bondType []uint8) float32 {
     // Goroutines are cheap so we can have a small blocksize...I guess
-    const blockSize = 2000;
+    const blockSize = 200000;
     charges := amber.VectorAsFloat32Array(mol.Blocks["CHARGE"]);
     if charges == nil {
         fmt.Println("Electro: bad CHARGE block");

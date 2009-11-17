@@ -91,21 +91,21 @@ type System struct {
 // Gets an int at specified offset in specified block.
 func (mol *System) GetInt(blockName string, index int) int {
     s := mol.Blocks[blockName].At(index).(string);
-    val, _ := strconv.Atoi(s);
+    val := what.Atoi(s);
     return val;
 }
 
 // Returns the number of atoms the prmtop expects there to be
 func (mol *System) NumAtoms() int {
     x := mol.Blocks["POINTERS"].At(0).(string);
-    val, _ := strconv.Atoi(strings.TrimSpace(x));
+    val := what.Atoi(strings.TrimSpace(x));
     return val;
 }
 
 // Returns the number of residues the prmtop expects there to be
 func (mol *System) NumResidues() int {
     x := mol.Blocks["POINTERS"].At(11).(string);
-    val, _ := strconv.Atoi(strings.TrimSpace(x));
+    val := what.Atoi(strings.TrimSpace(x));
     return val;
 }
 
