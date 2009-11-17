@@ -1,13 +1,17 @@
 package main
 import (
     "fmt";
+    "flag";
     "amber";
 )
 
 func main() {
-    fmt.Println("Hello there.");
+    var prmtopFilename, rstFilename string;
+    flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename");
+    flag.StringVar(&rstFilename, "c", "inpcrd", "Inpcrd/rst filename");
+    flag.Parse();
 
-    mol := amber.LoadSystem("complex.top.x", "complex.crd.1627");
+    mol := amber.LoadSystem(prmtopFilename, rstFilename);
     if mol == nil { return }
     
     fmt.Println("Number of atoms:", mol.NumAtoms());
