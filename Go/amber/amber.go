@@ -51,46 +51,12 @@ const (
   IFCAP  = 29; // set to 1 if the CAP option from edit was specified
 )
 
-// Converts a string to a float32 without failing on whitespace.
-// Also, supports exponents and terminates the program on error.
-// Even slower than the Go library version. Use Strtod instead.
-func Atof32(s string) float32 {
-    s = strings.TrimSpace(s);
-    // Assume anything that starts with N is a NaN
-    if s[0] == 'N' { return float32(math.NaN()) }
-    b := len(s);
-    // Check for exponent
-    var exponent int;
-    var err os.Error;
-    for i := 0; i < len(s); i++ {
-        if s[i] == 'E' || s[i] == 'e' {
-            b = i - 1;
-            i++;
-            sign := 1;
-            if s[i] == '-' { sign = -1 }
-            i++;
-            exponent, err = strconv.Atoi(s[i:len(s)]);
-            if err != nil {
-                fmt.Println("Atof32 exponent", err);
-                os.Exit(1);
-            }
-            exponent *= sign;
-        }
-    }
-    mantissa, err := strconv.Atof32(s[0:b]);
-    if err != nil {
-        fmt.Println("Atof32 mantissa", s, err);
-        os.Exit(1);
-    }
-    return mantissa * float32(math.Pow10(exponent));
-}
-
 // Converts a Vector of strings to an array of float32.
 func VectorAsFloat32Array(v *vector.Vector) []float32 {
     data := make([]float32, v.Len());
     for i := 0; i < v.Len(); i++ {
         x := strings.TrimSpace(v.At(i).(string));
-        data[i] = Atof32(x);
+        data[i] = what.Atof32(x);
     }
     return data;
 }
@@ -100,7 +66,7 @@ func StringArrayAsFloat32Array(v []string) []float32 {
     data := make([]float32, len(v));
     for i := 0; i < len(v); i++ {
         x := strings.TrimSpace(v[i]);
-        data[i] = Atof32(x);
+        data[i] = what.Atof32(x);
     }
     return data;
 }
@@ -229,7 +195,7 @@ func LoadSystem(prmtopFilename, inpcrdFilename string) *System {
         if n > numThings { n = numThings }
         thisFrame := mol.Coords[frame];
         for i := 0; i < n*thingLen && ctr < numCoords; i += thingLen {
-            thisFrame[ctr] = Atof32(s[i:i+thingLen]);
+            thisFrame[ctr] = what.Atof32(s[i:i+thingLen]);
             ctr++;
         }
     }
