@@ -84,7 +84,7 @@ func Atof32(s string) float32 {
     return mantissa * float32(math.Pow10(exponent));
 }
 
-// Converts a Vector of strings to an array of float32s.
+// Converts a Vector of strings to an array of float32.
 func VectorAsFloat32Array(v *vector.Vector) []float32 {
     data := make([]float32, v.Len());
     for i := 0; i < v.Len(); i++ {
@@ -94,7 +94,7 @@ func VectorAsFloat32Array(v *vector.Vector) []float32 {
     return data;
 }
 
-// Converts an array of strings to an array of float32s.
+// Converts an array of strings to an array of float32.
 func StringArrayAsFloat32Array(v []string) []float32 {
     data := make([]float32, len(v));
     for i := 0; i < len(v); i++ {

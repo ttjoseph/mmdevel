@@ -136,7 +136,7 @@ func projectCorrelSingleResiduePair(correl []float32, pairs *vector.Vector, numR
             pkl := pairs.At(kl).(amber.Pair);
             if ((pij.Row == i || pij.Col == i) && (pkl.Row == j || pkl.Col == j))
                 || ((pij.Row == j || pij.Col == j) && (pkl.Row == i || pkl.Col == i)) {
-                totalCorr += float64(correl[numPairs*ij+kl])
+                totalCorr += float64(amber.Fabs(correl[numPairs*ij+kl]))
             }
         }
     }
