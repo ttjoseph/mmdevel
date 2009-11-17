@@ -1,4 +1,8 @@
-all : coulomb correl
+all : coulomb correl crdpipe
+
+crdpipe : crdpipe.go
+	6g crdpipe.go
+	6l -o crdpipe crdpipe.6
 
 correl : correl.go sqrt32_decl.go sqrt32_amd64.s
 	6g correl.go sqrt32_decl.go
