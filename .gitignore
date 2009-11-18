@@ -1,4 +1,7 @@
 *.6
 ._*
 _obj/*
-
+*.bin
+correl.txt
+decomp.txt
+pairs.txt

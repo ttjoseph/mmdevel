@@ -1,30 +1,159 @@
+// Calculates the nonbonded energy (vdW and electrostatic) in an AMBER system.
+// Assumes no cutoff. Does not calculate any other terms.
 package main
-import (
-    "fmt";
-    "flag";
+import ( "encoding/binary"; "math"; "fmt"; "flag"; "os";
     "amber";
 )
 
 func main() {
-    var prmtopFilename, rstFilename string;
+    var prmtopFilename, rstFilename, trjFilename string;
+    var numFrames int;
     flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename");
-    flag.StringVar(&rstFilename, "c", "inpcrd", "Inpcrd/rst filename");
+    flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename");
+    flag.StringVar(&trjFilename, "x", "", "Trajectory (in text format) filename");
+    flag.IntVar(&numFrames, "n", 0, "Number of frames in trajectory to process");
     flag.Parse();
 
-    mol := amber.LoadSystem(prmtopFilename, rstFilename);
+    mol := amber.LoadSystem(prmtopFilename);
     if mol == nil { return }
-    // Lookup table for bond types so we don't calculate electrostatics
-    // and such between bonded atoms
-    bondType := makeBondTypeTable(mol);
-    
     fmt.Println("Number of atoms:", mol.NumAtoms());
     fmt.Println("Number of residues:", mol.NumResidues());
-    fmt.Println("Electrostatic energy:", Electro(mol, bondType), "kcal/mol");
-    fmt.Println("van der Waals energy:", LennardJones(mol, bondType), "kcal/mol");
+
+    // Set up nonbonded parameters. We load them here so we don't have to keep
+    // doing it later
+    var params NonbondedParamsCache;
+    params.Ntypes = mol.GetInt("POINTERS", amber.NTYPES);
+    params.NBIndices = amber.VectorAsIntArray(mol.Blocks["NONBONDED_PARM_INDEX"]); // ICO
+    params.AtomTypeIndices = amber.VectorAsIntArray(mol.Blocks["ATOM_TYPE_INDEX"]); // IAC
+    params.LJ12 = amber.VectorAsFloat32Array(mol.Blocks["LENNARD_JONES_ACOEF"]); // CN1
+    params.LJ6 = amber.VectorAsFloat32Array(mol.Blocks["LENNARD_JONES_BCOEF"]); // CN2
+    params.Charges = amber.VectorAsFloat32Array(mol.Blocks["CHARGE"]);
+    // If we were given a single snapshot, just do that one
+    if rstFilename != "" {
+        fmt.Printf("Calculating energies for single snapshot %s.\n", rstFilename);
+        mol.LoadRst(rstFilename);
+    
+        var request EnergyCalcRequest;
+        request.NBParams = params;
+        request.Molecule = mol;
+        request.Coords = mol.Coords[0];
+        // Lookup table for bond types so we don't calculate electrostatics
+        // and such between bonded atoms
+        request.BondType = makeBondTypeTable(mol);
+        request.ResidueMap = makeResidueMap(mol);
+        request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues());
+    
+        fmt.Println("Electrostatic energy:", Electro(&request), "kcal/mol");
+        fmt.Println("van der Waals energy:", LennardJones(&request), "kcal/mol");
+        fmt.Println(amber.Status());
+
+        amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt");
+    } else if trjFilename != "" {
+        // Or, do the trajectory.
+        if numFrames == 0 {
+            fmt.Println("Please specify the number of frames you want processed with -n.");
+            return;
+        }
+        fmt.Printf("Calculating energies for %d frames of trajectory %s.\n", numFrames, trjFilename);
+
+        // Lookup table for bond types so we don't calculate nonbonded energies
+        // between bonded atoms
+        bondType := makeBondTypeTable(mol);
+        residueMap := makeResidueMap(mol);
+        
+        // Average the decomposition matrices together in a separate routine
+
+        var numKids int;
+        ch := make(chan int);
+        decompCh := make (chan *EnergyCalcRequest, 10);
+        go decompProcessor("energies2.bin", mol.NumResidues(), numFrames, decompCh, ch);
+        numAtoms := mol.NumAtoms();
+        hasBox := false;
+        if mol.GetInt("POINTERS", amber.IFBOX) > 0 { hasBox = true }
+        for frame := 0; frame < numFrames; frame++ {
+            coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+            go calcSingleTrjFrame(mol, params, coords, frame+1000, bondType, residueMap, decompCh, ch);
+            numKids++;
+        }
+        
+        for i := 0; i < numKids; i++ { <-ch }
+        decompCh <- nil;
+        <-ch; // Wait for decompProcessor to finish
+    }
+}
+
+func decompProcessor(filename string, numResidues, numFrames int, ch chan *EnergyCalcRequest, termCh chan int) {
+    // decompTotal := make([]float64, numResidues*numResidues);
+    // Output file
+    outFile, _ := os.Open(filename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0644);
+    defer outFile.Close();
+    tmp := make([]byte, numResidues*numResidues*4); // for converting to bytes
+    for ; ; {
+        request := <-ch;
+        if request == nil { break }
+        // Actually do stuff with the data here.
+        // We could in theory do the correlation stuff now, but maybe we should
+        // just write the frames to disk.
+        // Dump to file. We have to explicitly convert to bytes. Yay.
+        for j, n := range(request.Decomp) {
+            binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)));
+        }
+        outFile.Write(tmp);
+    }
+    fmt.Println("decompProcessor finished. I wrote to", filename);
+    termCh <- 0; // Tell caller we're done
+}
+
+func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int,
+        bondType []uint8, residueMap []int, reqOutCh chan *EnergyCalcRequest, ch chan int) {
+
+    var request EnergyCalcRequest;
+    request.Molecule = mol;
+    request.Frame = frame;
+    request.NBParams = params;
+    request.Coords = coords;
+    request.BondType = bondType;
+    request.ResidueMap = residueMap;
+    request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues());
+
+    elec := Electro(&request);
+    vdw := LennardJones(&request);
+    fmt.Printf("%d: Electrostatic: %f vdW: %f\n", frame, elec, vdw);
+    
+    // Send request to listening something that will probably average the decomp matrix
+    // but could in theory do whatever it wants.
+    reqOutCh <- &request;
+    // Return frame ID through channel
+    ch <- frame;
+}
+
+
+// This is probably a little unwieldy but I hope it's better than
+// zillions of arguments to every energy calculation function
+type EnergyCalcRequest struct {
+    Molecule *amber.System;
+    Frame int; // Frame ID
+    Coords []float32;
+    BondType []uint8; // Input: Bond type matrix
+    ResidueMap []int; // Input: Maps atom id to residue id
+    // Output: pairwise residue-residue interaction energies
+    Decomp []float64; // Lots of math going on here so float64
+    Energy float64;
+    
+    // Parameters for nonbonded energy calculations.
+    // Charges, LJ coefficients, and so on
+    NBParams NonbondedParamsCache;
+}
+
+// Place to stash preloaded parameters for nonbonded energy calculations
+type NonbondedParamsCache struct {
+    Ntypes int;
+    NBIndices, AtomTypeIndices []int;
+    LJ12, LJ6, Charges []float32;
 }
 
 // Computes the Lennard-Jones 6-12 energy
-func LennardJones(mol *amber.System, bondType []uint8) float32 {
+func LennardJones(request *EnergyCalcRequest) float64 {
     const VDW_14_SCALING_RECIP = 1/2.0;
     // NONBONDED_PARM_INDEX==ICO
     // ATOM_TYPE_INDEX=IAC
@@ -36,22 +165,38 @@ func LennardJones(mol *amber.System, bondType []uint8) float32 {
     // and BSOL).
     // LENNARD_JONES_ACOEF=CN1
     // LENNARD_JONES_BCOEF=CN2
-    ntypes := mol.GetInt("POINTERS", amber.NTYPES);
-    coords := mol.Coords[0];
-    nbIndices := amber.VectorAsIntArray(mol.Blocks["NONBONDED_PARM_INDEX"]); // ICO
-    atomTypeIndices := amber.VectorAsIntArray(mol.Blocks["ATOM_TYPE_INDEX"]); // IAC
-    lj12 := amber.VectorAsFloat32Array(mol.Blocks["LENNARD_JONES_ACOEF"]); // CN1
-    lj6 := amber.VectorAsFloat32Array(mol.Blocks["LENNARD_JONES_BCOEF"]); // CN2
+    /* // Check for 10-12 parameters
+    for _, v := range(nbIndices) {
+        if v < 0 {
+            fmt.Println("10-12 L-J parameters found, which aren't supported.");
+            return 0
+        }
+    } */
+    mol := request.Molecule;
+    coords := request.Coords;
+    bondType := request.BondType;
+    decomp := request.Decomp;
+    residueMap := request.ResidueMap;
+    ntypes := request.NBParams.Ntypes;
+    nbIndices := request.NBParams.NBIndices; 
+    atomTypeIndices := request.NBParams.AtomTypeIndices; 
+    lj12 := request.NBParams.LJ12;
+    lj6 := request.NBParams.LJ6;
     numAtoms := mol.NumAtoms();
-    var energy float32;
+    numResidues := mol.NumResidues();
+    var energy float64;
     for atom_i := 0; atom_i < numAtoms; atom_i++ {
         // Get coordinates for atom i
         offs_i := atom_i*3;
         x0, y0, z0 := coords[offs_i], coords[offs_i+1], coords[offs_i+2];
+        // Pulled some of the matrix indexing out of the inner loop
+        nbparm_offs_i := ntypes*(atomTypeIndices[atom_i]-1);
+        bondtype_offs_i := atom_i*numAtoms;
+        i_res := residueMap[atom_i]; // Residue of atom i
     
         for atom_j := 0; atom_j < atom_i; atom_j++ {
             // Are these atoms connected by a bond or angle? If so, skip.
-            thisBondType := bondType[atom_i*numAtoms + atom_j];
+            thisBondType := bondType[bondtype_offs_i + atom_j];
             if thisBondType & (BOND | ANGLE) != 0 { continue }
             // Calculate distance reciprocals
             offs_j := atom_j*3;
@@ -60,66 +205,49 @@ func LennardJones(mol *amber.System, bondType []uint8) float32 {
             distRecip := Invsqrt32(dx*dx + dy*dy + dz*dz);
             distRecip3 := distRecip*distRecip*distRecip;
             distRecip6 := distRecip3*distRecip3;
-            distRecip12 := distRecip6*distRecip6;
 
             // Locate L-J parameters for this atom pair
-            index := nbIndices[ntypes*(atomTypeIndices[atom_i]-1) + atomTypeIndices[atom_j]-1] - 1;
-            if index < 0 {
-                fmt.Println("Found 10-12 Lennard-Jones parameters, which aren't supported.");
-                return 0;
-            }
+            index := nbIndices[nbparm_offs_i + atomTypeIndices[atom_j]-1] - 1;
             // A/r12 - C/r6
-            k12, k6 := lj12[index], lj6[index];
-            thisEnergy := k12*distRecip12 - k6*distRecip6;
+            thisEnergy := float64(lj12[index]*distRecip6*distRecip6 - lj6[index]*distRecip6);
             // Are these atoms 1-4 to each other? If so, divide the energy
             // by 2.0, as ff99 et al dictate.
             if thisBondType & DIHEDRAL != 0 { thisEnergy *= VDW_14_SCALING_RECIP }
+            // Pairwise residue energy decomposition - symmetric
+            decomp[i_res*numResidues + residueMap[atom_j]] += thisEnergy;
+            decomp[i_res + residueMap[atom_j]*numResidues] += thisEnergy;
             energy += thisEnergy;
         }
     }
-    
+    request.Energy = energy;
     return energy;
 }
 
-// Calculates electrostatic interactions among all particles in an AmberSystem
-func Electro(mol *amber.System, bondType []uint8) float32 {
-    // Goroutines are cheap so we can have a small blocksize...I guess
-    const blockSize = 200000;
-    charges := amber.VectorAsFloat32Array(mol.Blocks["CHARGE"]);
+// Calculates electrostatic interactions among all particles in an amber.System,
+// according to the force field (e.g. don't include bonded atoms)
+func Electro(request *EnergyCalcRequest) float64 {
+    const COULOMB = 332.0636;
+    const EEL_14_SCALING_RECIP = 1/1.2;
+    mol := request.Molecule;
+    coords := request.Coords;
+    bondType := request.BondType;
+    decomp := request.Decomp;
+    residueMap := request.ResidueMap;
+    charges := request.NBParams.Charges;
     if charges == nil {
         fmt.Println("Electro: bad CHARGE block");
         return 0
     }
-    
     // Actually do the calculation
-    ch := make(chan float32);
-    numKids := 0;
-    for i := 0; i < mol.NumAtoms(); i += blockSize {
-        // Fire a goroutine to calculate part of the answer
-        a, b := i, i + blockSize; 
-        if b > mol.NumAtoms() { b = mol.NumAtoms() }
-        go calcElecPiece(mol.Coords[0], charges, bondType, a, b, ch);
-        numKids++;
-    }
-    
-    // Collect results
-    var energy float32 = 0;
-    for i := 0; i < numKids; i++ { energy += <-ch }
-    return energy;
-}
-
-// Returns, through the channel, the electrostatic energy of the system, only considering
-// atom indices [a,b).
-func calcElecPiece(coords, charges []float32, bondType []uint8, a, b int, ch chan float32) {
-    const COULOMB = 332.0636;
-    const EEL_14_SCALING_RECIP = 1/1.2;
-    var energy float32 = 0.0;
+    var energy float64;
     numAtoms := len(coords) / 3;
-    for atom_i := a; atom_i < b; atom_i++ {
+    numResidues := mol.NumResidues();
+    for atom_i := 0; atom_i < numAtoms; atom_i++ {
         // x y z x y z ...
         offs_i := atom_i*3;
         x0, y0, z0 := coords[offs_i], coords[offs_i+1], coords[offs_i+2];
         qi := charges[atom_i];
+        i_res := residueMap[atom_i]; // Residue of atom i
         // Iterate over all atoms
         for atom_j := 0; atom_j < atom_i; atom_j++ {
             offs_j := atom_j*3;
@@ -129,29 +257,42 @@ func calcElecPiece(coords, charges []float32, bondType []uint8, a, b int, ch cha
             if thisBondType & (BOND | ANGLE) != 0 { continue }
             // Use reciprocal sqrt to calculate distance
             dx, dy, dz := x1-x0, y1-y0, z1-z0;
-            thisEnergy := (qi * charges[atom_j]) * Invsqrt32(dx*dx + dy*dy + dz*dz);
+            thisEnergy := float64((qi * charges[atom_j]) * Invsqrt32(dx*dx + dy*dy + dz*dz));
             // Are these atoms 1-4 to each other? If so, divide the energy
             // by 1.2, as ff99 et al dictate.
             if thisBondType & DIHEDRAL != 0 { thisEnergy *= EEL_14_SCALING_RECIP }
-            
-            // TODO: Add to residue-residue energy bucket for decomposition
-            
+            // Pairwise residue energy decomposition
+            decomp[i_res*numResidues + residueMap[atom_j]] += thisEnergy;
+            decomp[i_res + residueMap[atom_j]*numResidues] += thisEnergy;
             energy += thisEnergy;
         }
     }
-    ch <- energy; // Tell caller the resulting total energy
+    request.Energy = energy;
+    return energy; // Tell caller the resulting total energy
 }
 
-// Returns the Euclidean distance between two 3D points
-func distance(x0, y0, z0, x1, y1, z1 float32) float32 {
-    dx, dy, dz := x1-x0, y1-y0, z1-z0;
-    return Sqrt32(dx*dx + dy*dy + dz*dz)
+// Converts the RESIDUE_POINTER block into an array, index by atom, that
+// provides the residue number (starting at 0) for each atom.
+func makeResidueMap(mol *amber.System) []int {
+    residueList := amber.VectorAsIntArray(mol.Blocks["RESIDUE_POINTER"]);
+    residueMap := make([]int, mol.NumAtoms()); // len(residueList) == #resideus
+    for res_i := 1; res_i < len(residueList); res_i++ {
+        a := residueList[res_i-1]-1; // Fortran starts counting at 1
+        b := residueList[res_i]-1;
+        for i := a; i < b; i++ { residueMap[i] = res_i - 1 }
+    }
+    // RESIDUE_POINTER doesn't specify the last residue because that's implied
+    numResidues := mol.NumResidues();
+    for i := residueList[numResidues-1]-1; i < len(residueMap); i++ {
+        residueMap[i] = numResidues-1;
+    }
+    return residueMap;
 }
 
+// We want to be able to quickly look up if two atoms are bonded.
+// To do this, make a matrix for all atom pairs such that
+// M[numAtoms*i+j] == bondtype (one of the constants).
 func makeBondTypeTable(mol *amber.System) []uint8 {
-    // We want to be able to quickly look up if two atoms are bonded.
-    // To do this, make a matrix for all atom pairs such that
-    // M[numAtoms*i+j] == bondtype (one of the constants).
     numAtoms := mol.NumAtoms();
     bondType := make([]uint8, numAtoms*numAtoms);
 
