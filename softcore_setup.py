@@ -18,7 +18,7 @@ def validate(condition, msg="Argh!"):
 
 def float3(val):
     """Converts to float, rounding to 3 decimal places. Used for coercing rst files into
-    PDB-level precision to avoid problems with finding softcore regions due to rounding`."""
+    PDB-level precision to avoid problems with finding softcore regions due to rounding."""
 
     return round(float(val), 3)
 
