@@ -110,7 +110,7 @@ func (mol *System) NumResidues() int {
 }
 
 // Loads an AMBER system - both a prmtop and inpcrd.
-func LoadSystem(prmtopFilename, inpcrdFilename string) *System {
+func LoadSystem(prmtopFilename string) *System {
     var mol System;
     mol.Blocks = make(map[string]*vector.Vector);
     mol.Formats = make(map[string][]string);
@@ -169,24 +169,29 @@ func LoadSystem(prmtopFilename, inpcrdFilename string) *System {
             }
         }
     }
-    
+    return &mol;
+ }
+
+// Load an inpcrd file into this system 
+func (mol *System) LoadRst(inpcrdFilename string)
+{   
     inpcrdFile, err := os.Open(inpcrdFilename, os.O_RDONLY, 0);
     if err != nil {
         fmt.Println("Error opening inpcrd:", err);
-        return nil;
+        return;
     }
     // defer == awesome!
     defer inpcrdFile.Close();
     inpcrd := bufio.NewReader(inpcrdFile);
     // Header line - discard
-    s, err = inpcrd.ReadString('\n');
+    s, err := inpcrd.ReadString('\n');
     // Number of atoms
     s, err = inpcrd.ReadString('\n');
     n, _ := strconv.Atoi(strings.TrimSpace(s));
     numCoords := mol.NumAtoms() * 3;
     if n*3 != numCoords {
         fmt.Fprintf(os.Stderr, "Inpcrd says it has %d atoms but I'm expecting %d instead.\n", n, numCoords);
-        return nil;
+        return;
     }
     
     // Now we know how many tokens to expect. They are all of length 12,
@@ -214,8 +219,6 @@ func LoadSystem(prmtopFilename, inpcrdFilename string) *System {
     if mol.GetInt("POINTERS", IFBOX) > 0 {
         fmt.Fprintf(os.Stderr, "There's a box! We should do something about this.\n");
     }
-    
-    return &mol;
 }
 
 // Returns indices of space-delimited tokens in a string. Does not tolerate
@@ -455,7 +458,7 @@ func DumpCoordsAsRst(coords []float32) {
     }
 }
 
-// Reads bytes from an open file.
+// Reads bytes from an open file up to the next newline.
 func readLineFromOpenFile(fp *os.File) string {
     buf := make([]byte, 256);
     var i int;

@@ -2,7 +2,7 @@ package main
 import ( "fmt"; "container/vector"; "os"; "encoding/binary"; "math"; "strings"; "amber"; )
 
 // Number of frames to process at once
-const BATCH_SIZE = 400;
+const BATCH_SIZE = 100;
 const NUM_RESIDUES = 709;
 
 // Dumps pairwise residue interaction energies to a binary file.
@@ -92,12 +92,13 @@ func main/*_projectMatrix*/() {
 }
 
 func main_calcCorrel() {
-  const filename = "energies-all.bin";
+  const filename = "energies2.bin";
   
   fmt.Println("Calculating average interaction energy matrix.");
   average := AverageEnergies(filename, NUM_RESIDUES);
   pairs := PairsAboveCutoff(average, NUM_RESIDUES, 20);
   fmt.Println("Found", pairs.Len(), "pairs above cutoff. Dumping to file...");
+  //return;
   amber.DumpPairVectorAsText(pairs, "pairs.txt");
   correl := CalcCorrelations(filename, average, pairs, NUM_RESIDUES);
   correl = correl;
