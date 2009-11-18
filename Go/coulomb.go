@@ -128,8 +128,18 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
     request.ResidueMap = residueMap;
     request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues());
 
+/*  //DEBUG: print first few coordinates
+    fmt.Printf("%d:", frame);
+    for i := 0; i < 6; i++ {
+        fmt.Printf(" %f", coords[i]);
+    }
+    fmt.Println();
+*/
     elec := Electro(&request);
     vdw := LennardJones(&request);
+    if math.IsNaN(elec) || math.IsNaN(vdw) {
+        fmt.Println("Weird energies. Does your trajectory have boxes but your prmtop doesn't, or vice versa?");
+    }
     fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status());
     
     // Send request to listening something that will probably average the decomp matrix
