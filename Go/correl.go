@@ -1,9 +1,22 @@
 package main
-import ( "fmt"; "container/vector"; "os"; "encoding/binary"; "math"; "strings"; "amber"; )
+import ( "flag"; "fmt"; "container/vector"; "os"; "encoding/binary"; "math"; "strings"; "amber"; )
 
 // Number of frames to process at once
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 200;
 const NUM_RESIDUES = 709;
+
+func main() {
+    var command string;
+    flag.StringVar(&command, "cmd", "", "dump-mdouts,project-matrix,calc-correl");
+    flag.Parse();
+    
+    switch(command) {
+        case "dump-mdouts": main_dumpMdoutsToBin();
+        case "project-matrix": main_projectMatrix();
+        case "calc-correl": main_calcCorrel();
+        default: flag.Usage();
+    }
+}
 
 // Dumps pairwise residue interaction energies to a binary file.
 // Doing this drastically speeds up reading it back later (Atof32 is slow as balls, looks like).
@@ -72,7 +85,7 @@ func main_subtractEnergies() {
 }
 
 // Project pairs interaction matrix to residue interaction matrix
-func main/*_projectMatrix*/() {
+func main_projectMatrix() {
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
     pairsMat, numPairs2, _ := amber.LoadTextAsFloat32Matrix("pairs.txt");
     if numPairs != numPairs2 {
@@ -91,14 +104,16 @@ func main/*_projectMatrix*/() {
     amber.DumpFloat32MatrixAsText(rescorrel, NUM_RESIDUES, "rescorrel.txt");
 }
 
+// Calculates correlation in interaction energies over time
 func main_calcCorrel() {
-  const filename = "energies2.bin";
+  const filename = "energies2.bin"; // Raw binary format
   
   fmt.Println("Calculating average interaction energy matrix.");
   average := AverageEnergies(filename, NUM_RESIDUES);
-  pairs := PairsAboveCutoff(average, NUM_RESIDUES, 20);
+  amber.DumpFloat32MatrixAsText(average, NUM_RESIDUES, "average.txt");
+  //average, _, _ := amber.LoadTextAsFloat32Matrix("average.txt");
+  pairs := PairsAboveCutoff(average, NUM_RESIDUES, 15);
   fmt.Println("Found", pairs.Len(), "pairs above cutoff. Dumping to file...");
-  //return;
   amber.DumpPairVectorAsText(pairs, "pairs.txt");
   correl := CalcCorrelations(filename, average, pairs, NUM_RESIDUES);
   correl = correl;
@@ -114,13 +129,14 @@ func CorrelToResidueInteractionMatrix(correl []float32, pairs *vector.Vector, nu
     result := make([]float32, numResidues*numResidues);
     numGoroutines := 0;
     for i := 0; i < numResidues; i++ {
-        for j := 0; j < numResidues; j++ {
-            if i == j { continue }
+        for j := 0; j < i; j++ {
+            // if i == j { continue }
             go projectCorrelSingleResiduePair(correl, pairs, numResidues, i, j, result, ch);
             numGoroutines++;
         }
         // if numGoroutines > 3000 { break } // DEBUG
     }
+    // Wait for goroutines to finish
     for i := 0; i < numGoroutines; i++ { <-ch }
     return result;
 }
@@ -132,8 +148,8 @@ func projectCorrelSingleResiduePair(correl []float32, pairs *vector.Vector, numR
     var totalCorr float64;
     for ij := 0; ij < numPairs; ij++ {
         pij := pairs.At(ij).(amber.Pair);
-        for kl := 0; kl < numPairs; kl++ {
-            if ij == kl { continue }
+        for kl := 0; kl < ij; kl++ {
+            // if ij == kl { continue }
             pkl := pairs.At(kl).(amber.Pair);
             if ((pij.Row == i || pij.Col == i) && (pkl.Row == j || pkl.Col == j))
                 || ((pij.Row == j || pij.Col == j) && (pkl.Row == i || pkl.Col == i)) {
@@ -142,7 +158,8 @@ func projectCorrelSingleResiduePair(correl []float32, pairs *vector.Vector, numR
         }
     }
     result[numResidues*i+j] = float32(totalCorr);
-    //fmt.Fprintf(os.Stderr, "%d %d %f\n", i, j, result[numResidues*i+j]);
+    // Do other side of diagonal so the result matrix is symmetric
+    result[numResidues*j+i] = float32(totalCorr);
     if j == 0 { fmt.Fprintf(os.Stderr, "projectCorrelSingleResiduePair done: %d. %s\n", i, amber.Status()); }
     ch <- 0;
 }
@@ -198,13 +215,12 @@ func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
     fp, _ := os.Open(filename, os.O_RDONLY, 0);
     defer fp.Close();
     ch := make(chan int);
-    fmt.Println("Loading frames...");
     for i := 0; i < numFrames; i += BATCH_SIZE {
         numFramesNow := BATCH_SIZE;
         if numFrames-i < numFramesNow { numFramesNow = numFrames - i }
-        fmt.Fprintf(os.Stderr, "On frames %d to %d.\n", i+1, i+numFramesNow);
+        fmt.Fprintf(os.Stderr, "CalcCorrelations: frames %d-%d of %d. %s\n", i+1, i+numFramesNow, numFrames, amber.Status());
         energies := loadFrameBatch(fp, numResidues, numFramesNow);
-        fmt.Fprintf(os.Stderr, "Done loading frame batch, now processing them. %s\n", amber.Status());
+        // fmt.Fprintf(os.Stderr, "Done loading frame batch, now processing them. %s\n", amber.Status());
         pairsEnergies := MakePairsEnergies(energies, pairs, numResidues, numFramesNow);
         const numRowsPerBatch = 200;
         numKids := 0;
@@ -233,15 +249,18 @@ func calcCorrelationsPiece(pairsEnergies, average []float32, pairs *vector.Vecto
         numResidues, numFrames, ij_a, ij_b int, num, denom []float64, ch chan int) {
     numPairs := pairs.Len();
     for ij := ij_a; ij < ij_b; ij++ {
-        for kl := 0; kl < numPairs; kl++ {
-            if ij == kl { continue }
+        for kl := 0; kl < ij; kl++ {
+            // if ij == kl { continue }
             pij := pairs.At(ij).(amber.Pair);
             pkl := pairs.At(kl).(amber.Pair);
             for t := 0; t < numFrames; t++ {
                 a := pairsEnergies[numFrames*ij+t] - average[numResidues*pij.Row+pij.Col];
                 b := pairsEnergies[numFrames*kl+t] - average[numResidues*pkl.Row+pkl.Col];
                 num[numPairs*ij+kl] += float64(a * b);
-                denom[numPairs*ij+kl] += math.Sqrt(float64(a*a * b*b))
+                denom[numPairs*ij+kl] += math.Sqrt(float64(a*a * b*b));
+                // Do other side of diagonal so it's symmetric
+                num[numPairs*kl+ij] += float64(a * b);
+                denom[numPairs*kl+ij] += math.Sqrt(float64(a*a * b*b));
             }
         }
     }
@@ -273,7 +292,7 @@ func loadSingleFrame(fp *os.File, numResidues int, result []float32) {
 func PairsAboveCutoff(average []float32, numResidues int, cutoff float32) *vector.Vector {
     pairs := new(vector.Vector);
     for row := 0; row < numResidues; row++ {
-        for col := 0; col < numResidues; col++ {
+        for col := 0; col < row-1; col++ {
             // Ignore same and adjacent residue interactions
             if amber.Abs(row-col) > 1 && amber.Fabs(average[row*numResidues+col]) > cutoff {
                 // print "%d %d = %f" % (row, col, avg[row,col])
@@ -295,9 +314,9 @@ func AverageEnergies(filename string, numResidues int) []float32 {
   defer fp.Close();
   
   for frame := 0; frame < numFrames; frame += BATCH_SIZE {
-    fmt.Fprintf(os.Stderr, "On frame %d of %d. %s\n", frame+1, numFrames, amber.Status());
     thisBatchSize := BATCH_SIZE;
     if thisBatchSize > numFrames-frame { thisBatchSize = numFrames-frame }
+    fmt.Fprintf(os.Stderr, "On frames %d-%d of %d. %s\n", frame+1, frame+thisBatchSize, numFrames, amber.Status());
     energies := loadFrameBatch(fp, numResidues, thisBatchSize);
     
     // Add up all the values in this batch

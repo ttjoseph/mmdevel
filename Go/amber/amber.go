@@ -269,15 +269,17 @@ type fakeStream struct {
 // Acts more or less like ReadString('\n') from the Go library
 func (s *fakeStream) readString() string {
     a := s.ptr;
+    // Advance to newline
     for ; s.ptr < len(s.data) && s.data[s.ptr] != '\n'; s.ptr++ { }
     b := s.ptr+1;
     // Advance past newline, or signal EOF
-    if s.ptr < len(s.data) {
-        s.ptr++;
+    if s.ptr < len(s.data)-1 {
+        s.ptr++
     }
     else {
         s.ptr = -1
     }
+    if a < 0 || b > len(s.data) { fmt.Println(a,b,"whee!") }
     return string(s.data[a:b]);
 }
 

@@ -1,7 +1,7 @@
 // Calculates the nonbonded energy (vdW and electrostatic) in an AMBER system.
 // Assumes no cutoff. Does not calculate any other terms.
 package main
-import ( "encoding/binary"; "math"; "fmt"; "flag"; "os";
+import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; //"malloc";
     "amber";
 )
 
@@ -61,18 +61,16 @@ func main() {
         bondType := makeBondTypeTable(mol);
         residueMap := makeResidueMap(mol);
         
-        // Average the decomposition matrices together in a separate routine
-
         var numKids int;
         ch := make(chan int);
-        decompCh := make (chan *EnergyCalcRequest, 10);
+        decompCh := make(chan *EnergyCalcRequest, 10);
         go decompProcessor("energies2.bin", mol.NumResidues(), numFrames, decompCh, ch);
         numAtoms := mol.NumAtoms();
         hasBox := false;
         if mol.GetInt("POINTERS", amber.IFBOX) > 0 { hasBox = true }
         for frame := 0; frame < numFrames; frame++ {
             coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
-            go calcSingleTrjFrame(mol, params, coords, frame+1000, bondType, residueMap, decompCh, ch);
+            go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch);
             numKids++;
         }
         
@@ -82,6 +80,11 @@ func main() {
     }
 }
 
+// Does something with each decomposition matrix, which is currently writing them to disk.
+// This is a separate goroutine so that only one matrix is processed at a time, which is
+// convenient for writing to a disk.
+// XXX: Matrices are written out of order because we receive them in arbitrary order.
+// That should be OK for the correlation analysis though.
 func decompProcessor(filename string, numResidues, numFrames int, ch chan *EnergyCalcRequest, termCh chan int) {
     // decompTotal := make([]float64, numResidues*numResidues);
     // Output file
@@ -99,7 +102,16 @@ func decompProcessor(filename string, numResidues, numFrames int, ch chan *Energ
             binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)));
         }
         outFile.Write(tmp);
-    }
+        // Explicitly release our reference to the decomp matrix.
+        // If we don't do this, the GC seems to assume that all these pointer
+        // references still live inside this function and doesn't free them
+        // even though they have gone out of scope and nothing else is holding them.
+        // My theory is that it only checks for stuff it can free when pointer variables
+        // are given new values or when all functions that touched the object have returned.
+        // Who knows though...perhaps at a near-OOM state it would have tried harder
+        // to free up some memory?
+        request.Decomp = nil;
+}
     fmt.Println("decompProcessor finished. I wrote to", filename);
     termCh <- 0; // Tell caller we're done
 }
@@ -118,7 +130,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 
     elec := Electro(&request);
     vdw := LennardJones(&request);
-    fmt.Printf("%d: Electrostatic: %f vdW: %f\n", frame, elec, vdw);
+    fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status());
     
     // Send request to listening something that will probably average the decomp matrix
     // but could in theory do whatever it wants.
