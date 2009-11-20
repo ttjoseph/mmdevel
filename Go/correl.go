@@ -54,36 +54,6 @@ func main_dumpMdoutsToBin() {
     fmt.Println(amber.Status());
 }
 
-// Subtracts energies in a binary file, like for comparing mismatched and matched
-// residue interaction energies. Not really sure what it means to do this, so it doesn't
-// actually do anything yet.
-func main_subtractEnergies() {
-    filenameA := "energies.FM.bin";
-    filenameB := "energies.G6C.bin";
-    
-    numFrames := min(numFramesInFile(filenameA, NUM_RESIDUES),
-        numFramesInFile(filenameB, NUM_RESIDUES));
-    fmt.Fprintf(os.Stderr, "We'll use the first %d frames.\n", numFrames);
-    
-    handleError := func(err os.Error) {
-        if err != nil {
-            fmt.Fprintf(os.Stderr, "Yo! Error!! %s\n", err);
-            os.Exit(0);
-        }
-    };
-    
-    fpA, err := os.Open(filenameA, os.O_RDONLY, 0);
-    handleError(err);
-    fpB, err := os.Open(filenameB, os.O_RDONLY, 0);
-    handleError(err);
-    
-    energiesA := loadFrameBatch(fpA, NUM_RESIDUES, numFrames);
-    energiesB := loadFrameBatch(fpB, NUM_RESIDUES, numFrames);
-    
-    energiesA = energiesA;
-    energiesB = energiesB;
-}
-
 // Project pairs interaction matrix to residue interaction matrix
 func main_projectMatrix() {
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
