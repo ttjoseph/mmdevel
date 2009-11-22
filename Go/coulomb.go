@@ -64,6 +64,7 @@ func main() {
         var numKids int;
         ch := make(chan int);
         decompCh := make(chan *EnergyCalcRequest, 10);
+        // This goroutine will be fed the decomposition matrices made by the energy functions
         go decompProcessor("energies2.bin", mol.NumResidues(), numFrames, decompCh, ch);
         numAtoms := mol.NumAtoms();
         hasBox := false;
@@ -116,6 +117,8 @@ func decompProcessor(filename string, numResidues, numFrames int, ch chan *Energ
     termCh <- 0; // Tell caller we're done
 }
 
+// Calculates the nonbonded energies for a single snapshot.
+// Results are returned through reqOutCh.
 func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int,
         bondType []uint8, residueMap []int, reqOutCh chan *EnergyCalcRequest, ch chan int) {
 
@@ -313,7 +316,7 @@ func makeResidueMap(mol *amber.System) []int {
 
 // We want to be able to quickly look up if two atoms are bonded.
 // To do this, make a matrix for all atom pairs such that
-// M[numAtoms*i+j] == bondtype (one of the constants).
+// M[numAtoms*i+j] & bondtypeflag != 0
 func makeBondTypeTable(mol *amber.System) []uint8 {
     numAtoms := mol.NumAtoms();
     bondType := make([]uint8, numAtoms*numAtoms);
@@ -355,6 +358,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
     return bondType;    
 }
 
+// Flags for the bondType matrix
 const (
     UNBONDED = 0;
     BOND = 1;

@@ -6,31 +6,41 @@ const BATCH_SIZE = 200;
 const NUM_RESIDUES = 709;
 
 func main() {
-    var command string;
+    var command, filename string;
     flag.StringVar(&command, "cmd", "", "dump-mdouts,project-matrix,calc-correl");
+    flag.StringVar(&filename, "f", "", "Input or output filename, depending on cmd");
     flag.Parse();
     
     switch(command) {
-        case "dump-mdouts": main_dumpMdoutsToBin();
+        case "dump-mdouts": main_dumpMdoutsToBin(filename);
         case "project-matrix": main_projectMatrix();
-        case "calc-correl": main_calcCorrel();
+        case "calc-correl": main_calcCorrel(filename);
         default: flag.Usage();
+    }
+}
+
+func genericErrorHandler(err os.Error) {
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "%s\n", err.String());
+        os.Exit(1);
     }
 }
 
 // Dumps pairwise residue interaction energies to a binary file.
 // Doing this drastically speeds up reading it back later (Atof32 is slow as balls, looks like).
 // This way we only have to deal with the mdout files once.
-func main_dumpMdoutsToBin() {
+func main_dumpMdoutsToBin(outFilename string) {
     const dirname = "snapshots/";
-    dir, _ := os.Open(dirname, os.O_RDONLY, 0);
+    dir, err := os.Open(dirname, os.O_RDONLY, 0);
+    genericErrorHandler(err);
     names, _ := dir.Readdirnames(100000);
     filenames := new(vector.Vector);
     for _, v := range(names) {
         if strings.HasSuffix(v, ".mdout.gz") { filenames.Push(dirname + v) }
     }
     // Output file
-    outFile, _ := os.Open("energies.bin", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0644);
+    outFile, err := os.Open(outFilename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0644);
+    genericErrorHandler(err);
     defer outFile.Close();
     // Load each mdout from gzip
     numFrames := filenames.Len();
@@ -56,6 +66,8 @@ func main_dumpMdoutsToBin() {
 
 // Project pairs interaction matrix to residue interaction matrix
 func main_projectMatrix() {
+    fmt.Fprintf(os.Stderr, "Projecting pairs correlation matrix to yield residue correlatin matrix.\n");
+    fmt.Fprintf(os.Stderr, "Using correl.txt and pairs.txt.\n");
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
     pairsMat, numPairs2, _ := amber.LoadTextAsFloat32Matrix("pairs.txt");
     if numPairs != numPairs2 {
@@ -75,8 +87,8 @@ func main_projectMatrix() {
 }
 
 // Calculates correlation in interaction energies over time
-func main_calcCorrel() {
-  const filename = "energies2.bin"; // Raw binary format
+func main_calcCorrel(filename string) {
+  // const filename = "energies2.bin"; // Raw binary format
   
   fmt.Println("Calculating average interaction energy matrix.");
   average := AverageEnergies(filename, NUM_RESIDUES);
@@ -169,10 +181,11 @@ func numFramesInFile(filename string, numResidues int) int {
 // Calculates correlation matrix (numPairs*numPairs)
 // Allows for processing frames in batches so we don't have to load all of them
 // in memory at once.
+// filename is the name of a binary file that is 
+// sizeof(float32)*numPairs^2*numFrames in size
 func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
         numResidues int) []float32 {
     numFrames := numFramesInFile(filename, numResidues);
-    // fmt.Fprintf(os.Stderr, "There are %d frames in %s.\n", numFrames, filename);
     // Keep numerator, denominator matrices across calls to this function
     // Each of these matrices is numPairs*numPairs
     // We use float64 here because there could potentially be a large number of
@@ -182,7 +195,8 @@ func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
     
     // Load a batch of frames, process it, then load a new batch of frames.
     // Presumably the GC will free the old batch.
-    fp, _ := os.Open(filename, os.O_RDONLY, 0);
+    fp, err := os.Open(filename, os.O_RDONLY, 0);
+    genericErrorHandler(err);
     defer fp.Close();
     ch := make(chan int);
     for i := 0; i < numFrames; i += BATCH_SIZE {
@@ -200,9 +214,8 @@ func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
             go calcCorrelationsPiece(pairsEnergies, average, pairs, numResidues, numFramesNow,
                 ij, ij+numRowsNow, num, denom, ch);
             numKids++;
-            //fmt.Fprintf(os.Stderr, "Fired off a piece %d %d\n", ij, ij+numRowsNow);
         }
-        // Wait for goroutines
+        // Wait for goroutines to finish
         for i := 0; i < numKids; i++ { <-ch }
     }
     
@@ -280,7 +293,8 @@ func AverageEnergies(filename string, numResidues int) []float32 {
   numFrames := numFramesInFile(filename, numResidues);
   fmt.Println(numFrames, "frames in file.");
   sum := make([]float64, numResidues*numResidues);
-  fp, _ := os.Open(filename, os.O_RDONLY, 0);
+  fp, err := os.Open(filename, os.O_RDONLY, 0);
+  genericErrorHandler(err);
   defer fp.Close();
   
   for frame := 0; frame < numFrames; frame += BATCH_SIZE {
