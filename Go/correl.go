@@ -3,12 +3,13 @@ import ( "flag"; "fmt"; "container/vector"; "os"; "encoding/binary"; "math"; "st
 
 // Number of frames to process at once
 const BATCH_SIZE = 200;
-const NUM_RESIDUES = 709;
+var NumResidues int;
 
 func main() {
     var command, filename string;
     flag.StringVar(&command, "cmd", "", "dump-mdouts,project-matrix,calc-correl");
     flag.StringVar(&filename, "f", "", "Input or output filename, depending on cmd");
+    flag.IntVar(&NumResidues, "n", 0, "Number of residues");
     flag.Parse();
     
     switch(command) {
@@ -66,6 +67,11 @@ func main_dumpMdoutsToBin(outFilename string) {
 
 // Project pairs interaction matrix to residue interaction matrix
 func main_projectMatrix() {
+    if NumResidues <= 0 {
+        fmt.Println("Please specify the number of residues with -n.");
+        return;
+    }
+    
     fmt.Fprintf(os.Stderr, "Projecting pairs correlation matrix to yield residue correlatin matrix.\n");
     fmt.Fprintf(os.Stderr, "Using correl.txt and pairs.txt.\n");
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
@@ -82,22 +88,26 @@ func main_projectMatrix() {
     }
     
     fmt.Fprintf(os.Stderr, "Projecting matrix...\n");
-    rescorrel := CorrelToResidueInteractionMatrix(correl, pairs, NUM_RESIDUES);
-    amber.DumpFloat32MatrixAsText(rescorrel, NUM_RESIDUES, "rescorrel.txt");
+    rescorrel := CorrelToResidueInteractionMatrix(correl, pairs, NumResidues);
+    amber.DumpFloat32MatrixAsText(rescorrel, NumResidues, "rescorrel.txt");
 }
 
 // Calculates correlation in interaction energies over time
 func main_calcCorrel(filename string) {
   // const filename = "energies2.bin"; // Raw binary format
+  if NumResidues <= 0 {
+      fmt.Println("Please specify the number of residues with -n.");
+      return;
+  }
   
   fmt.Println("Calculating average interaction energy matrix.");
-  average := AverageEnergies(filename, NUM_RESIDUES);
-  amber.DumpFloat32MatrixAsText(average, NUM_RESIDUES, "average.txt");
+  average := AverageEnergies(filename, NumResidues);
+  amber.DumpFloat32MatrixAsText(average, NumResidues, "average.txt");
   //average, _, _ := amber.LoadTextAsFloat32Matrix("average.txt");
-  pairs := PairsAboveCutoff(average, NUM_RESIDUES, 15);
+  pairs := PairsAboveCutoff(average, NumResidues, 15);
   fmt.Println("Found", pairs.Len(), "pairs above cutoff. Dumping to file...");
   amber.DumpPairVectorAsText(pairs, "pairs.txt");
-  correl := CalcCorrelations(filename, average, pairs, NUM_RESIDUES);
+  correl := CalcCorrelations(filename, average, pairs, NumResidues);
   correl = correl;
   fmt.Println("Done calculating correlation matrix. Dumping to file...");
   amber.DumpFloat32MatrixAsText(correl, pairs.Len(), "correl.txt");
