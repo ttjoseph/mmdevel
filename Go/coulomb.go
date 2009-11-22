@@ -1,7 +1,7 @@
 // Calculates the nonbonded energy (vdW and electrostatic) in an AMBER system.
 // Assumes no cutoff. Does not calculate any other terms.
 package main
-import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; //"malloc";
+import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; "bufio";
     "amber";
 )
 
@@ -18,6 +18,12 @@ func main() {
     if mol == nil { return }
     fmt.Println("Number of atoms:", mol.NumAtoms());
     fmt.Println("Number of residues:", mol.NumResidues());
+    fmt.Print("Periodic box in prmtop: ");
+    if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
+        fmt.Println("Yes");
+    } else {
+        fmt.Println("No")
+    }
 
     // Set up nonbonded parameters. We load them here so we don't have to keep
     // doing it later
@@ -50,6 +56,15 @@ func main() {
         amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt");
     } else if trjFilename != "" {
         // Or, do the trajectory.
+        trjFp, err := os.Open(trjFilename, os.O_RDONLY, 0);
+        if err != nil {
+            fmt.Println("Error opening", trjFilename, err);
+            return;
+        }
+        defer trjFp.Close();
+        trj := bufio.NewReader(trjFp);
+        trj.ReadString('\n'); // Eat header line
+
         if numFrames == 0 {
             fmt.Println("Please specify the number of frames you want processed with -n.");
             return;
@@ -69,8 +84,10 @@ func main() {
         numAtoms := mol.NumAtoms();
         hasBox := false;
         if mol.GetInt("POINTERS", amber.IFBOX) > 0 { hasBox = true }
+        
         for frame := 0; frame < numFrames; frame++ {
-            coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+            //coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+            coords := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox);
             go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch);
             numKids++;
         }
@@ -131,13 +148,13 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
     request.ResidueMap = residueMap;
     request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues());
 
-/*  //DEBUG: print first few coordinates
-    fmt.Printf("%d:", frame);
+  //DEBUG: print first few coordinates
+    fmt.Printf("%d [%d]:", frame, len(coords));
     for i := 0; i < 6; i++ {
         fmt.Printf(" %f", coords[i]);
     }
     fmt.Println();
-*/
+
     elec := Electro(&request);
     vdw := LennardJones(&request);
     if math.IsNaN(elec) || math.IsNaN(vdw) {
