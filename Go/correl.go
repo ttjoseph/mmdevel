@@ -3,34 +3,45 @@ import ( "flag"; "fmt"; "container/vector"; "os"; "encoding/binary"; "math"; "st
 
 // Number of frames to process at once
 const BATCH_SIZE = 200;
-const NUM_RESIDUES = 709;
+var NumResidues int;
 
 func main() {
-    var command string;
+    var command, filename string;
     flag.StringVar(&command, "cmd", "", "dump-mdouts,project-matrix,calc-correl");
+    flag.StringVar(&filename, "f", "", "Input or output filename, depending on cmd");
+    flag.IntVar(&NumResidues, "n", 0, "Number of residues");
     flag.Parse();
     
     switch(command) {
-        case "dump-mdouts": main_dumpMdoutsToBin();
+        case "dump-mdouts": main_dumpMdoutsToBin(filename);
         case "project-matrix": main_projectMatrix();
-        case "calc-correl": main_calcCorrel();
+        case "calc-correl": main_calcCorrel(filename);
         default: flag.Usage();
+    }
+}
+
+func genericErrorHandler(err os.Error) {
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "%s\n", err.String());
+        os.Exit(1);
     }
 }
 
 // Dumps pairwise residue interaction energies to a binary file.
 // Doing this drastically speeds up reading it back later (Atof32 is slow as balls, looks like).
 // This way we only have to deal with the mdout files once.
-func main_dumpMdoutsToBin() {
+func main_dumpMdoutsToBin(outFilename string) {
     const dirname = "snapshots/";
-    dir, _ := os.Open(dirname, os.O_RDONLY, 0);
+    dir, err := os.Open(dirname, os.O_RDONLY, 0);
+    genericErrorHandler(err);
     names, _ := dir.Readdirnames(100000);
     filenames := new(vector.Vector);
     for _, v := range(names) {
         if strings.HasSuffix(v, ".mdout.gz") { filenames.Push(dirname + v) }
     }
     // Output file
-    outFile, _ := os.Open("energies.bin", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0644);
+    outFile, err := os.Open(outFilename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0644);
+    genericErrorHandler(err);
     defer outFile.Close();
     // Load each mdout from gzip
     numFrames := filenames.Len();
@@ -54,38 +65,15 @@ func main_dumpMdoutsToBin() {
     fmt.Println(amber.Status());
 }
 
-// Subtracts energies in a binary file, like for comparing mismatched and matched
-// residue interaction energies. Not really sure what it means to do this, so it doesn't
-// actually do anything yet.
-func main_subtractEnergies() {
-    filenameA := "energies.FM.bin";
-    filenameB := "energies.G6C.bin";
-    
-    numFrames := min(numFramesInFile(filenameA, NUM_RESIDUES),
-        numFramesInFile(filenameB, NUM_RESIDUES));
-    fmt.Fprintf(os.Stderr, "We'll use the first %d frames.\n", numFrames);
-    
-    handleError := func(err os.Error) {
-        if err != nil {
-            fmt.Fprintf(os.Stderr, "Yo! Error!! %s\n", err);
-            os.Exit(0);
-        }
-    };
-    
-    fpA, err := os.Open(filenameA, os.O_RDONLY, 0);
-    handleError(err);
-    fpB, err := os.Open(filenameB, os.O_RDONLY, 0);
-    handleError(err);
-    
-    energiesA := loadFrameBatch(fpA, NUM_RESIDUES, numFrames);
-    energiesB := loadFrameBatch(fpB, NUM_RESIDUES, numFrames);
-    
-    energiesA = energiesA;
-    energiesB = energiesB;
-}
-
 // Project pairs interaction matrix to residue interaction matrix
 func main_projectMatrix() {
+    if NumResidues <= 0 {
+        fmt.Println("Please specify the number of residues with -n.");
+        return;
+    }
+    
+    fmt.Fprintf(os.Stderr, "Projecting pairs correlation matrix to yield residue correlatin matrix.\n");
+    fmt.Fprintf(os.Stderr, "Using correl.txt and pairs.txt.\n");
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
     pairsMat, numPairs2, _ := amber.LoadTextAsFloat32Matrix("pairs.txt");
     if numPairs != numPairs2 {
@@ -100,22 +88,26 @@ func main_projectMatrix() {
     }
     
     fmt.Fprintf(os.Stderr, "Projecting matrix...\n");
-    rescorrel := CorrelToResidueInteractionMatrix(correl, pairs, NUM_RESIDUES);
-    amber.DumpFloat32MatrixAsText(rescorrel, NUM_RESIDUES, "rescorrel.txt");
+    rescorrel := CorrelToResidueInteractionMatrix(correl, pairs, NumResidues);
+    amber.DumpFloat32MatrixAsText(rescorrel, NumResidues, "rescorrel.txt");
 }
 
 // Calculates correlation in interaction energies over time
-func main_calcCorrel() {
-  const filename = "energies2.bin"; // Raw binary format
+func main_calcCorrel(filename string) {
+  // const filename = "energies2.bin"; // Raw binary format
+  if NumResidues <= 0 {
+      fmt.Println("Please specify the number of residues with -n.");
+      return;
+  }
   
   fmt.Println("Calculating average interaction energy matrix.");
-  average := AverageEnergies(filename, NUM_RESIDUES);
-  amber.DumpFloat32MatrixAsText(average, NUM_RESIDUES, "average.txt");
+  average := AverageEnergies(filename, NumResidues);
+  amber.DumpFloat32MatrixAsText(average, NumResidues, "average.txt");
   //average, _, _ := amber.LoadTextAsFloat32Matrix("average.txt");
-  pairs := PairsAboveCutoff(average, NUM_RESIDUES, 15);
+  pairs := PairsAboveCutoff(average, NumResidues, 15);
   fmt.Println("Found", pairs.Len(), "pairs above cutoff. Dumping to file...");
   amber.DumpPairVectorAsText(pairs, "pairs.txt");
-  correl := CalcCorrelations(filename, average, pairs, NUM_RESIDUES);
+  correl := CalcCorrelations(filename, average, pairs, NumResidues);
   correl = correl;
   fmt.Println("Done calculating correlation matrix. Dumping to file...");
   amber.DumpFloat32MatrixAsText(correl, pairs.Len(), "correl.txt");
@@ -199,10 +191,11 @@ func numFramesInFile(filename string, numResidues int) int {
 // Calculates correlation matrix (numPairs*numPairs)
 // Allows for processing frames in batches so we don't have to load all of them
 // in memory at once.
+// filename is the name of a binary file that is 
+// sizeof(float32)*numPairs^2*numFrames in size
 func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
         numResidues int) []float32 {
     numFrames := numFramesInFile(filename, numResidues);
-    // fmt.Fprintf(os.Stderr, "There are %d frames in %s.\n", numFrames, filename);
     // Keep numerator, denominator matrices across calls to this function
     // Each of these matrices is numPairs*numPairs
     // We use float64 here because there could potentially be a large number of
@@ -212,7 +205,8 @@ func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
     
     // Load a batch of frames, process it, then load a new batch of frames.
     // Presumably the GC will free the old batch.
-    fp, _ := os.Open(filename, os.O_RDONLY, 0);
+    fp, err := os.Open(filename, os.O_RDONLY, 0);
+    genericErrorHandler(err);
     defer fp.Close();
     ch := make(chan int);
     for i := 0; i < numFrames; i += BATCH_SIZE {
@@ -230,9 +224,8 @@ func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
             go calcCorrelationsPiece(pairsEnergies, average, pairs, numResidues, numFramesNow,
                 ij, ij+numRowsNow, num, denom, ch);
             numKids++;
-            //fmt.Fprintf(os.Stderr, "Fired off a piece %d %d\n", ij, ij+numRowsNow);
         }
-        // Wait for goroutines
+        // Wait for goroutines to finish
         for i := 0; i < numKids; i++ { <-ch }
     }
     
@@ -310,7 +303,8 @@ func AverageEnergies(filename string, numResidues int) []float32 {
   numFrames := numFramesInFile(filename, numResidues);
   fmt.Println(numFrames, "frames in file.");
   sum := make([]float64, numResidues*numResidues);
-  fp, _ := os.Open(filename, os.O_RDONLY, 0);
+  fp, err := os.Open(filename, os.O_RDONLY, 0);
+  genericErrorHandler(err);
   defer fp.Close();
   
   for frame := 0; frame < numFrames; frame += BATCH_SIZE {

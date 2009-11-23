@@ -3,7 +3,6 @@
 package amber
 import (
     "fmt";
-    "math";
     "os";
     "bufio";
     "io";
@@ -469,39 +468,38 @@ func readLineFromOpenFile(fp *os.File) string {
     return string(buf[0:i]);
 }
 
-// Gets an arbitrary frame from an AMBER text-format trajectory without having to
-// read in the entire thing first.
-func GetFrameFromTrajectory(filename string, frame, numAtoms int, hasBox bool) []float32 {
-    fp, err := os.Open(filename, os.O_RDONLY, 0);
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Couldn't find file %s\n", filename);
-        return nil;
-    }
-    defer fp.Close();
-    
-    // Eat header
-    readLineFromOpenFile(fp);
-    // In an mdcrd trajectory, there are 10 coordinates per line,
-    // but in a single snapshot file there are 6, for some reason.
-    linesPerFrameTrj := int(math.Ceil(float64(numAtoms*3) / 10));
-    // There are as many newlines as lines per frame.
-    // 8 bytes per coordinate, 8*3+2+1 bytes for box
-    bytesPerFrame := numAtoms*8*3 + linesPerFrameTrj;
-    if hasBox { bytesPerFrame += 8*3+2+1 }
-    //    fmt.Fprintf(os.Stderr, "Bytes per frame: %d, lines per frame: %d; seeking to %d\n", bytesPerFrame, 
-    //        linesPerFrameTrj, frame * bytesPerFrame);
-    fp.Seek(int64(frame * bytesPerFrame), 1); // Seek relative to current offset
-    // fmt.Printf("%s\n%d\n", header, numAtoms);
-    // Read coordinates
+// Assumes file pointer is at the start of a frame
+func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []float32 {
+    // Calculate how many lines per frame
+    linesPerFrame := numAtoms*3 / 10;
+    if numAtoms*3 % 10 != 0 { linesPerFrame++ }
+    // fmt.Println("Lines per frame:", linesPerFrame);
+
     coords := make([]float32, numAtoms*3);
-    buf := make([]byte, 8);
-    for i := 0; i < numAtoms*3; i++ {
-        // Eat newline every 10 coordinates
-        if i > 0 && i % 10 == 0 { fp.Read(buf[0:1]) }
-        fp.Read(buf);
-        coords[i] = float32(what.Atof64(string(buf)));
-        // if i < 150 { fmt.Printf("%f\n", coords[i]) }
+    ci := 0;
+
+    for i := 0; i < linesPerFrame; i++ {
+        // Read and trim a line
+        line, err := trj.ReadString('\n');
+        if err != nil { break }
+        line = trimSpace(line);
+        // Each token is ended by whitespace or eol.
+        for b := 0; b < len(line) ; {
+            var e int;
+            // Advance to end of token
+            for e = b; e < len(line) && line[e] != ' ' && line[e] != '\n' && line[e] != '\t'; e++ { }
+            //fmt.Println(b, e, line[b:e]);
+            coords[ci] = what.Atof32(line[b:e]);
+            ci++;
+            // Now, e is either at end of line or points to whitespace.
+            // Advance b to start of next token or eol
+            for b = e; b < len(line) && (line[b] == ' ' || line[b] == '\n' || line[b] == '\t'); b++ {}
+        }
+        
     }
+    
+    // Eat box line
+    if hasBox { trj.ReadString('\n') }
     return coords;
 }
 
