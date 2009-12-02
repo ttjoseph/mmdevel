@@ -6,12 +6,13 @@ import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; "bufio";
 )
 
 func main() {
-    var prmtopFilename, rstFilename, trjFilename string;
+    var prmtopFilename, rstFilename, trjFilename, outFilename string;
     var numFrames int;
     flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename");
     flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename");
     flag.StringVar(&trjFilename, "x", "", "Trajectory (in text format) filename");
     flag.IntVar(&numFrames, "n", 0, "Number of frames in trajectory to process");
+    flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename");
     flag.Parse();
 
     mol := amber.LoadSystem(prmtopFilename);
@@ -80,7 +81,8 @@ func main() {
         ch := make(chan int);
         decompCh := make(chan *EnergyCalcRequest, 10);
         // This goroutine will be fed the decomposition matrices made by the energy functions
-        go decompProcessor("energies2.bin", mol.NumResidues(), numFrames, decompCh, ch);
+        fmt.Println("Writing residue decomposition matrices to", outFilename);
+        go decompProcessor(outFilename, mol.NumResidues(), numFrames, decompCh, ch);
         numAtoms := mol.NumAtoms();
         hasBox := false;
         if mol.GetInt("POINTERS", amber.IFBOX) > 0 { hasBox = true }
@@ -148,13 +150,13 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
     request.ResidueMap = residueMap;
     request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues());
 
-  //DEBUG: print first few coordinates
+/*  //DEBUG: print first few coordinates
     fmt.Printf("%d [%d]:", frame, len(coords));
     for i := 0; i < 6; i++ {
         fmt.Printf(" %f", coords[i]);
     }
     fmt.Println();
-
+*/
     elec := Electro(&request);
     vdw := LennardJones(&request);
     if math.IsNaN(elec) || math.IsNaN(vdw) {

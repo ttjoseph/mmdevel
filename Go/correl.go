@@ -72,7 +72,7 @@ func main_projectMatrix() {
         return;
     }
     
-    fmt.Fprintf(os.Stderr, "Projecting pairs correlation matrix to yield residue correlatin matrix.\n");
+    fmt.Fprintf(os.Stderr, "Projecting pairs correlation matrix to yield residue correlation matrix.\n");
     fmt.Fprintf(os.Stderr, "Using correl.txt and pairs.txt.\n");
     correl, numPairs, _ := amber.LoadTextAsFloat32Matrix("correl.txt");
     pairsMat, numPairs2, _ := amber.LoadTextAsFloat32Matrix("pairs.txt");
