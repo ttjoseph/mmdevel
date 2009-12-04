@@ -5,7 +5,7 @@ import (
     "fmt";
     "os";
     "bufio";
-    "io";
+    "io/ioutil";
     "regexp";
     "strconv";
     "strings";
@@ -296,9 +296,9 @@ func inhaleFile(filename string) fakeStream {
         }
         defer fd.Close();
         file, err := gzip.NewInflater(fd);
-        fileData, err = io.ReadAll(file);
+        fileData, err = ioutil.ReadAll(file);
     } else {
-        fileData, err = io.ReadFile(filename);
+        fileData, err = ioutil.ReadFile(filename);
         if err != nil {
             fmt.Println("Error opening", filename, err);
             return fakeStream{nil, -1};

@@ -1,7 +1,7 @@
 // Calculates the nonbonded energy (vdW and electrostatic) in an AMBER system.
 // Assumes no cutoff. Does not calculate any other terms.
 package main
-import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; "bufio";
+import ( "encoding/binary"; "math"; "fmt"; "flag"; "os"; "bufio"; "malloc";
     "amber";
 )
 
@@ -92,6 +92,13 @@ func main() {
             coords := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox);
             go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch);
             numKids++;
+            
+            // Force GC periodically. This probably doesn't help that much.
+            if frame > 0 && frame % 1000 == 0 {
+               fmt.Println(amber.Status(), "Forcing garbage collection.");
+               malloc.GC();
+               fmt.Println("Garbage collection finished.", amber.Status());
+            }
         }
         
         for i := 0; i < numKids; i++ { <-ch }
@@ -131,7 +138,7 @@ func decompProcessor(filename string, numResidues, numFrames int, ch chan *Energ
         // Who knows though...perhaps at a near-OOM state it would have tried harder
         // to free up some memory?
         request.Decomp = nil;
-}
+    }
     fmt.Println("decompProcessor finished. I wrote to", filename);
     termCh <- 0; // Tell caller we're done
 }
