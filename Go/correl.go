@@ -101,16 +101,17 @@ func main_calcCorrel(filename string) {
   }
   
   fmt.Println("Calculating average interaction energy matrix.");
-  average := AverageEnergies(filename, NumResidues);
+  average := AverageEnergies(flag.Args(), NumResidues);
   amber.DumpFloat32MatrixAsText(average, NumResidues, "average.txt");
+  fmt.Println("Dumped average residue interaction energy matrix as average.txt.");
   //average, _, _ := amber.LoadTextAsFloat32Matrix("average.txt");
   pairs := PairsAboveCutoff(average, NumResidues, 15);
-  fmt.Println("Found", pairs.Len(), "pairs above cutoff. Dumping to file...");
   amber.DumpPairVectorAsText(pairs, "pairs.txt");
-  correl := CalcCorrelations(filename, average, pairs, NumResidues);
+  fmt.Println("Dumped", pairs.Len(), "pairs above cutoff to pairs.txt.");
+  correl := CalcCorrelations(flag.Args(), average, pairs, NumResidues);
   correl = correl;
-  fmt.Println("Done calculating correlation matrix. Dumping to file...");
   amber.DumpFloat32MatrixAsText(correl, pairs.Len(), "correl.txt");
+  fmt.Println("Dumped correlation matrix to correl.txt.");
   fmt.Println(amber.Status());
 }
 
@@ -193,42 +194,44 @@ func numFramesInFile(filename string, numResidues int) int {
 // in memory at once.
 // filename is the name of a binary file that is 
 // sizeof(float32)*numPairs^2*numFrames in size
-func CalcCorrelations(filename string, average []float32, pairs *vector.Vector,
+func CalcCorrelations(filenames []string, average []float32, pairs *vector.Vector,
         numResidues int) []float32 {
-    numFrames := numFramesInFile(filename, numResidues);
     // Keep numerator, denominator matrices across calls to this function
     // Each of these matrices is numPairs*numPairs
     // We use float64 here because there could potentially be a large number of
     // frames, and we don't want too much precision error
     num := make([]float64, pairs.Len()*pairs.Len());
     denom := make([]float64, pairs.Len()*pairs.Len());
-    
-    // Load a batch of frames, process it, then load a new batch of frames.
-    // Presumably the GC will free the old batch.
-    fp, err := os.Open(filename, os.O_RDONLY, 0);
-    genericErrorHandler(err);
-    defer fp.Close();
-    ch := make(chan int);
-    for i := 0; i < numFrames; i += BATCH_SIZE {
-        numFramesNow := BATCH_SIZE;
-        if numFrames-i < numFramesNow { numFramesNow = numFrames - i }
-        fmt.Fprintf(os.Stderr, "CalcCorrelations: frames %d-%d of %d. %s\n", i+1, i+numFramesNow, numFrames, amber.Status());
-        energies := loadFrameBatch(fp, numResidues, numFramesNow);
-        // fmt.Fprintf(os.Stderr, "Done loading frame batch, now processing them. %s\n", amber.Status());
-        pairsEnergies := MakePairsEnergies(energies, pairs, numResidues, numFramesNow);
-        const numRowsPerBatch = 200;
-        numKids := 0;
-        for ij := 0; ij < pairs.Len(); ij += numRowsPerBatch {
-            numRowsNow := numRowsPerBatch;
-            if numRowsNow > pairs.Len() - ij { numRowsNow = pairs.Len() - ij }
-            go calcCorrelationsPiece(pairsEnergies, average, pairs, numResidues, numFramesNow,
-                ij, ij+numRowsNow, num, denom, ch);
-            numKids++;
+
+    for _, filename := range(filenames) {
+        fmt.Println("Processing", filename, "...");
+        // Load a batch of frames, process it, then load a new batch of frames.
+        // Presumably the GC will free the old batch.
+        numFrames := numFramesInFile(filename, numResidues);
+        fp, err := os.Open(filename, os.O_RDONLY, 0);
+        genericErrorHandler(err);
+        defer fp.Close();
+        ch := make(chan int);
+        for i := 0; i < numFrames; i += BATCH_SIZE {
+            numFramesNow := BATCH_SIZE;
+            if numFrames-i < numFramesNow { numFramesNow = numFrames - i }
+            fmt.Fprintf(os.Stderr, "CalcCorrelations: frames %d-%d of %d. %s\n", i+1, i+numFramesNow, numFrames, amber.Status());
+            energies := loadFrameBatch(fp, numResidues, numFramesNow);
+            // fmt.Fprintf(os.Stderr, "Done loading frame batch, now processing them. %s\n", amber.Status());
+            pairsEnergies := MakePairsEnergies(energies, pairs, numResidues, numFramesNow);
+            const numRowsPerBatch = 200;
+            numKids := 0;
+            for ij := 0; ij < pairs.Len(); ij += numRowsPerBatch {
+                numRowsNow := numRowsPerBatch;
+                if numRowsNow > pairs.Len() - ij { numRowsNow = pairs.Len() - ij }
+                go calcCorrelationsPiece(pairsEnergies, average, pairs, numResidues, numFramesNow,
+                    ij, ij+numRowsNow, num, denom, ch);
+                numKids++;
+            }
+            // Wait for goroutines to finish
+            for i := 0; i < numKids; i++ { <-ch }
         }
-        // Wait for goroutines to finish
-        for i := 0; i < numKids; i++ { <-ch }
     }
-    
     // Divide numerator by denominator
     fmt.Fprintf(os.Stderr, "Done with everything. %s\n", amber.Status());
     correl := make([]float32, pairs.Len()*pairs.Len());
@@ -299,32 +302,35 @@ func PairsAboveCutoff(average []float32, numResidues int, cutoff float32) *vecto
 // Calculates the average energy matrix by processing the file in batches.
 // Turns out goroutines are not as ridiculously lightweight as I'd hoped, so
 // this is single-threaded.
-func AverageEnergies(filename string, numResidues int) []float32 {
-  numFrames := numFramesInFile(filename, numResidues);
-  fmt.Println(numFrames, "frames in file.");
-  sum := make([]float64, numResidues*numResidues);
-  fp, err := os.Open(filename, os.O_RDONLY, 0);
-  genericErrorHandler(err);
-  defer fp.Close();
+func AverageEnergies(filenames []string, numResidues int) []float32 {
+    sum := make([]float64, numResidues*numResidues);
+    totalNumFrames := 0;
   
-  for frame := 0; frame < numFrames; frame += BATCH_SIZE {
-    thisBatchSize := BATCH_SIZE;
-    if thisBatchSize > numFrames-frame { thisBatchSize = numFrames-frame }
-    fmt.Fprintf(os.Stderr, "On frames %d-%d of %d. %s\n", frame+1, frame+thisBatchSize, numFrames, amber.Status());
-    energies := loadFrameBatch(fp, numResidues, thisBatchSize);
-    
-    // Add up all the values in this batch
-    for i := 0; i < thisBatchSize; i++ {
-      for j := 0; j < len(energies[i]); j++ {
-        sum[j] += float64(energies[i][j])
-      }
+    for _, filename := range(filenames) {
+        numFrames := numFramesInFile(filename, numResidues);
+        fmt.Println("Processing", filename, "with", numFrames, "frames.");
+        fp, err := os.Open(filename, os.O_RDONLY, 0);
+        genericErrorHandler(err);
+        defer fp.Close();
+
+        for frame := 0; frame < numFrames; frame += BATCH_SIZE {
+            thisBatchSize := BATCH_SIZE;
+            if thisBatchSize > numFrames-frame { thisBatchSize = numFrames-frame }
+            fmt.Fprintf(os.Stderr, "On frames %d-%d of %d. %s\n", frame+1, frame+thisBatchSize, numFrames, amber.Status());
+            energies := loadFrameBatch(fp, numResidues, thisBatchSize);
+
+            // Add up all the values in this batch
+            for i := 0; i < thisBatchSize; i++ {
+                for j := 0; j < len(energies[i]); j++ { sum[j] += float64(energies[i][j]) }
+            }
+        }
+        totalNumFrames += numFrames;
     }
-  }
-  
-  // Divide to get average
-  result := make([]float32, numResidues*numResidues);
-  for i := 0; i < len(result); i++ { result[i] = float32(sum[i] / float64(numFrames)) }
-  return result;
+    
+    // Divide to get average
+    result := make([]float32, numResidues*numResidues);
+    for i := 0; i < len(result); i++ { result[i] = float32(sum[i] / float64(totalNumFrames)) }
+    return result;
 }
 
 func min(a, b int) int {
