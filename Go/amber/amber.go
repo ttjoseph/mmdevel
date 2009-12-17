@@ -172,8 +172,7 @@ func LoadSystem(prmtopFilename string) *System {
  }
 
 // Load an inpcrd file into this system 
-func (mol *System) LoadRst(inpcrdFilename string)
-{   
+func (mol *System) LoadRst(inpcrdFilename string) {   
     inpcrdFile, err := os.Open(inpcrdFilename, os.O_RDONLY, 0);
     if err != nil {
         fmt.Println("Error opening inpcrd:", err);
@@ -274,8 +273,7 @@ func (s *fakeStream) readString() string {
     // Advance past newline, or signal EOF
     if s.ptr < len(s.data)-1 {
         s.ptr++
-    }
-    else {
+    } else {
         s.ptr = -1
     }
     if a < 0 || b > len(s.data) { fmt.Println(a,b,"whee!") }
