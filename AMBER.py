@@ -99,7 +99,7 @@ class AmberSystem:
             if line == "": break
             name = block_name_re.match(line).groups()[0]
             line = fp.readline()
-            assert(line != "", "%s truncated after %%FLAG card." % filename)
+            assert line != "", "%s truncated after %%FLAG card." % filename
             format = self.format_re.match(line).groups()
             tokens_per_line = int(format[0])
             token_type = format[1]
@@ -135,9 +135,9 @@ class AmberSystem:
         fp.readline() # Eat header line
         
         coords_left = self.blocks['POINTERS'][AmberSystem.NATOM] * 3
-        assert(coords_left == int(fp.readline()) * 3, \
+        assert coords_left == int(fp.readline()) * 3, \
             "Number of atoms %d in %s differs from that specified in prmtop" \
-                % (coords_left, filename))
+                % (coords_left, filename)
         
         # There are 6 coordinates, 12 characters each per line
         while coords_left > 0:
@@ -152,9 +152,9 @@ class AmberSystem:
                 self.z.append(float(line[60:72]))
                 coords_left -= 3
                 
-        assert(coords_left == 0, \
+        assert coords_left == 0, \
             "Number of coordinates read is not a multiple of 3: is %s corrupt?" % \
-            filename)
+            filename
         
         # If a box is specified in the prmtop, read it in
         if self.blocks['POINTERS'][AmberSystem.IFBOX] != 0:
@@ -313,8 +313,8 @@ class AmberSystem:
         """Returns the residue number of a given atom index, or None if not 
         found."""
         
-        assert('RESIDUE_POINTER' in self.blocks, \
-            "No RESIDUE_POINTER block - Corrupt prmtop")
+        assert 'RESIDUE_POINTER' in self.blocks, \
+            "No RESIDUE_POINTER block - Corrupt prmtop"
         if atom < 1 or atom > self.num_atoms(): return None
         
         for residue in xrange(len(self.blocks['RESIDUE_POINTER']), 0, -1):
@@ -358,13 +358,13 @@ class AmberSystem:
         """Returns the number of atoms. Must have loaded a prmtop (with
         load_prmtop)."""
 
-        assert('POINTERS' in self.blocks, "Corrupt prmtop")
+        assert 'POINTERS' in self.blocks, "Corrupt prmtop"
         return int(self.blocks['POINTERS'][AmberSystem.NATOM])
         
     def num_residues(self):
         """Returns the number of residues."""
         
-        assert('POINTERS' in self.blocks, "Corrupt prmtop")
+        assert 'POINTERS' in self.blocks, "Corrupt prmtop"
         return int(self.blocks['POINTERS'][AmberSystem.NRES])
         
     def load_trajectory(self, filename):
