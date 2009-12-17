@@ -15,3 +15,4 @@ func Atof32(s string) float32 {
 func Atoi(s string) int {
     return int(C.atoi(C.CString(s)))
 }
+
