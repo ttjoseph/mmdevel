@@ -4,5 +4,5 @@
 
 package main
 
-func Sqrt32(x float32) float32;
-func Invsqrt32(x float32) float32;
+func Sqrt32(x float32) float32
+func Invsqrt32(x float32) float32

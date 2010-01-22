@@ -4,8 +4,11 @@
 // $ crdpipe -mdcrd foo.trj -frame 42 -numatoms 19401 > foo &
 // $ $AMBERHOME/bin/sander -p foo.top -c foo ...
 package main
-import ( "flag"; )
-import ( "amber"; )
+import (
+    "fmt"
+    "flag"
+//    "amber"
+)
 
 func main() {
     var trjFilename string;
@@ -17,6 +20,7 @@ func main() {
     flag.BoolVar(&hasBox, "hasbox", true, "Whether the trajectory records periodic boxes");
     flag.Parse();
     
-    coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
-    amber.DumpCoordsAsRst(coords);
+    fmt.Printf("I don't do anything!");
+    //coords := amber.GetNextFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+    //amber.DumpCoordsAsRst(coords);
 }
