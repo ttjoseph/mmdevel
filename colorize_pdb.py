@@ -79,7 +79,7 @@ for line in open(sys.argv[2]):
             val = 0
         # if val > 5: val = 5
         # if val < -1: val = -5
-        val /= len(pdb.atoms); # BS normalization factor
+        # val /= len(pdb.atoms); # BS normalization factor
         atom.occupancy = atom.tempfactor = round(val, 2)
 
     pdb.write(sys.stdout)
