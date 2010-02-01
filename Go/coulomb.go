@@ -4,6 +4,8 @@ package main
 
 import (
 	"encoding/binary"
+	"compress/gzip"
+	"strings"
 	"math"
 	"fmt"
 	"flag"
@@ -73,7 +75,19 @@ func main() {
 			return
 		}
 		defer trjFp.Close()
-		trj := bufio.NewReader(trjFp)
+		// A File is a Reader
+		//trjOrig := bufio.NewReader(trjFp)
+		var trj *bufio.Reader
+		if strings.HasSuffix(trjFilename, ".gz") {
+		    inflater, err := gzip.NewInflater(trjFp)
+		    if err != nil {
+		        fmt.Println("Not actually a gzip file: ", trjFilename, err)
+		        return
+	        }
+		    trj = bufio.NewReader(inflater)
+	    } else {
+	        trj = bufio.NewReader(trjFp)
+        }
 		trj.ReadString('\n') // Eat header line
 
 		if numFrames == 0 {
@@ -183,6 +197,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	vdw := LennardJones(&request)
 	if math.IsNaN(elec) || math.IsNaN(vdw) {
 		fmt.Println("Weird energies. Does your trajectory have boxes but your prmtop doesn't, or vice versa?")
+		os.Exit(1)
 	}
 	fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status())
 
