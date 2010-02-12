@@ -12,7 +12,7 @@ import (
 	"strings"
 	"container/vector"
 	"compress/gzip"
-	"malloc"
+	"runtime"
 )
 import (
 	"what"
@@ -540,7 +540,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 // from the amount of memory *you* allocated. Likely because the Go memory manager
 // allocates from its own pool of memory which it grows and shrinks speculatively.
 func Status() string {
-	return fmt.Sprintf("Allocated memory: %.1f MB", float(malloc.GetStats().Alloc)/1048576)
+	return fmt.Sprintf("Allocated memory: %.1f MB", float(runtime.MemStats.Alloc)/1048576)
 }
 
 // Encapsulates the indices of a residue interaction pair

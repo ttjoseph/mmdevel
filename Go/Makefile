@@ -7,12 +7,14 @@ crdpipe : crdpipe.go
 correl : correl.go sqrt32_decl.go sqrt32_amd64.s
 	6g correl.go sqrt32_decl.go
 	6a sqrt32_amd64.s
-	6l -o correl correl.6 sqrt32_amd64.6
+	gopack grc correl.a correl.6 sqrt32_amd64.6
+	6l -o correl correl.a
 
 coulomb : coulomb.go sqrt32_decl.go sqrt32_amd64.s
 	6g coulomb.go sqrt32_decl.go
 	6a sqrt32_amd64.s
-	6l -o coulomb coulomb.6 sqrt32_amd64.6
+	gopack grc coulomb.a coulomb.6 sqrt32_amd64.6
+	6l -o coulomb coulomb.a
 	
 clean :
-	rm -f *.6 coulomb correl
+	rm -f *.6 *.a coulomb correl

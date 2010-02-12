@@ -11,7 +11,7 @@ import (
 	"flag"
 	"os"
 	"bufio"
-	"malloc"
+	"runtime"
 	"amber"
 )
 
@@ -122,7 +122,7 @@ func main() {
 			// Force GC periodically. This probably doesn't help that much.
 			if frame > 0 && frame%1000 == 0 {
 				fmt.Println(amber.Status(), "Forcing garbage collection.")
-				malloc.GC()
+				runtime.GC()
 				fmt.Println("Garbage collection finished.", amber.Status())
 			}
 		}
