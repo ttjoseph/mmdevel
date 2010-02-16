@@ -493,7 +493,7 @@ func readLineFromOpenFile(fp *os.File) string {
 }
 
 // Assumes file pointer is at the start of a frame
-func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []float32 {
+func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([]float32, os.Error) {
 	// Calculate how many lines per frame
 	linesPerFrame := numAtoms * 3 / 10
 	if numAtoms*3%10 != 0 {
@@ -508,7 +508,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 		// Read and trim a line
 		line, err := trj.ReadString('\n')
 		if err != nil {
-			break
+			return nil, err
 		}
 		line = trimSpace(line)
 		// Each token is ended by whitespace or eol.
@@ -532,7 +532,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 	if hasBox {
 		trj.ReadString('\n')
 	}
-	return coords
+	return coords, nil
 }
 
 // Prints something about the current state of the program.
