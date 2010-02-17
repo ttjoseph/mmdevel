@@ -12,7 +12,7 @@ import (
 	"strings"
 	"container/vector"
 	"compress/gzip"
-	"malloc"
+	"runtime"
 )
 import (
 	"what"
@@ -493,7 +493,7 @@ func readLineFromOpenFile(fp *os.File) string {
 }
 
 // Assumes file pointer is at the start of a frame
-func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []float32 {
+func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([]float32, os.Error) {
 	// Calculate how many lines per frame
 	linesPerFrame := numAtoms * 3 / 10
 	if numAtoms*3%10 != 0 {
@@ -508,7 +508,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 		// Read and trim a line
 		line, err := trj.ReadString('\n')
 		if err != nil {
-			break
+			return nil, err
 		}
 		line = trimSpace(line)
 		// Each token is ended by whitespace or eol.
@@ -532,7 +532,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 	if hasBox {
 		trj.ReadString('\n')
 	}
-	return coords
+	return coords, nil
 }
 
 // Prints something about the current state of the program.
@@ -540,7 +540,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) []
 // from the amount of memory *you* allocated. Likely because the Go memory manager
 // allocates from its own pool of memory which it grows and shrinks speculatively.
 func Status() string {
-	return fmt.Sprintf("Allocated memory: %.1f MB", float(malloc.GetStats().Alloc)/1048576)
+	return fmt.Sprintf("Allocated memory: %.1f MB", float(runtime.MemStats.Alloc)/1048576)
 }
 
 // Encapsulates the indices of a residue interaction pair

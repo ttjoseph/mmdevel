@@ -71,11 +71,15 @@ for line in open(sys.argv[2]):
         sys.exit()
 
     # Color the PDB by residue using occupancy and tempfactor fields
+    # Fills in missing values with zero
     for atom in pdb.atoms:
-        val = values[atom.resid - 1]
+        try:
+            val = values[atom.resid - 1]
+        except IndexError:
+            val = 0
         # if val > 5: val = 5
         # if val < -1: val = -5
-        val /= len(pdb.atoms); # BS normalization factor
+        # val /= len(pdb.atoms); # BS normalization factor
         atom.occupancy = atom.tempfactor = round(val, 2)
 
     pdb.write(sys.stdout)

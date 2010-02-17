@@ -4,24 +4,26 @@ package main
 
 import (
 	"encoding/binary"
+	"compress/gzip"
+	"strings"
 	"math"
 	"fmt"
 	"flag"
 	"os"
 	"bufio"
-	"malloc"
 	"amber"
 )
 
 func main() {
-	var prmtopFilename, rstFilename, trjFilename, outFilename string
+	var prmtopFilename, rstFilename, outFilename string
 	var numFrames int
 	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename")
 	flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename")
-	flag.StringVar(&trjFilename, "x", "", "Trajectory (in text format) filename")
+	//flag.StringVar(&trjFilename, "x", "", "Trajectory (in text format) filename")
 	flag.IntVar(&numFrames, "n", 0, "Number of frames in trajectory to process")
 	flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename")
 	flag.Parse()
+    trjFilenames := flag.Args()
 
 	mol := amber.LoadSystem(prmtopFilename)
 	if mol == nil {
@@ -65,29 +67,12 @@ func main() {
 		fmt.Println(amber.Status())
 
 		amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt")
-	} else if trjFilename != "" {
-		// Or, do the trajectory.
-		trjFp, err := os.Open(trjFilename, os.O_RDONLY, 0)
-		if err != nil {
-			fmt.Println("Error opening", trjFilename, err)
-			return
-		}
-		defer trjFp.Close()
-		trj := bufio.NewReader(trjFp)
-		trj.ReadString('\n') // Eat header line
-
-		if numFrames == 0 {
-			fmt.Println("Please specify the number of frames you want processed with -n.")
-			return
-		}
-		fmt.Printf("Calculating energies for %d frames of trajectory %s.\n", numFrames, trjFilename)
-
+	} else if len(trjFilenames) > 0 {
 		// Lookup table for bond types so we don't calculate nonbonded energies
 		// between bonded atoms
 		bondType := makeBondTypeTable(mol)
 		residueMap := makeResidueMap(mol)
 
-		var numKids int
 		ch := make(chan int)
 		decompCh := make(chan *EnergyCalcRequest, 10)
 		// This goroutine will be fed the decomposition matrices made by the energy functions
@@ -99,18 +84,35 @@ func main() {
 			hasBox = true
 		}
 
-		for frame := 0; frame < numFrames; frame++ {
-			//coords := amber.GetFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
-			coords := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
-			go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch)
-			numKids++
+        fileId := 0
+	    trj, err := openTrj(trjFilenames[fileId])
+	    if err != nil {
+	        return
+        }
 
-			// Force GC periodically. This probably doesn't help that much.
-			if frame > 0 && frame%1000 == 0 {
-				fmt.Println(amber.Status(), "Forcing garbage collection.")
-				malloc.GC()
-				fmt.Println("Garbage collection finished.", amber.Status())
-			}
+		numKids := 0
+		for ; true ; {
+            // If there was an error, move on to the next trajectory file
+			coords, err := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
+            if err != nil {
+                fileId++
+                if fileId >= len(trjFilenames) {
+                    break
+                }
+                trj, err = openTrj(trjFilenames[fileId])
+                if err != nil {
+                    fmt.Println("Error opening", trjFilenames[fileId])
+                    break
+                }
+    			coords, err = amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
+    			if err != nil {
+    			    fmt.Printf("Trajectory file %s doesn't have even one valid frame\n", trjFilenames[fileId])
+    			    break
+			    }
+            }
+
+			go calcSingleTrjFrame(mol, params, coords, numKids, bondType, residueMap, decompCh, ch)
+			numKids++
 		}
 
 		for i := 0; i < numKids; i++ {
@@ -159,6 +161,32 @@ func decompProcessor(filename string, numResidues, numFrames int, ch chan *Energ
 	termCh <- 0 // Tell caller we're done
 }
 
+func openTrj(filename string) (*bufio.Reader, os.Error) {
+    // Or, do the trajectory.
+	trjFp, err := os.Open(filename, os.O_RDONLY, 0)
+	if err != nil {
+		fmt.Println("Error opening", filename, err)
+		return nil, err
+	}
+	//defer trjFp.Close()
+	// A File is a Reader
+	//trjOrig := bufio.NewReader(trjFp)
+	var trj *bufio.Reader
+	if strings.HasSuffix(filename, ".gz") {
+	    inflater, err := gzip.NewInflater(trjFp)
+	    if err != nil {
+	        fmt.Println("Not actually a gzip file: ", filename, err)
+	        return nil, err
+        }
+	    trj = bufio.NewReader(inflater)
+    } else {
+        trj = bufio.NewReader(trjFp)
+    }
+	trj.ReadString('\n') // Eat header line
+	fmt.Println("Opened", filename)
+	return trj, nil
+}
+
 // Calculates the nonbonded energies for a single snapshot.
 // Results are returned through reqOutCh.
 func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int, bondType []uint8, residueMap []int, reqOutCh chan *EnergyCalcRequest, ch chan int) {
@@ -183,6 +211,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	vdw := LennardJones(&request)
 	if math.IsNaN(elec) || math.IsNaN(vdw) {
 		fmt.Println("Weird energies. Does your trajectory have boxes but your prmtop doesn't, or vice versa?")
+		os.Exit(1)
 	}
 	fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status())
 

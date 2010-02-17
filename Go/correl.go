@@ -122,11 +122,11 @@ func main_calcCorrel(filename string) {
 	amber.DumpFloat32MatrixAsText(average, NumResidues, "average.txt")
 	fmt.Println("Dumped average residue interaction energy matrix as average.txt.")
 	//average, _, _ := amber.LoadTextAsFloat32Matrix("average.txt");
-	pairs := PairsAboveCutoff(average, NumResidues, 15)
+	pairs := PairsAboveCutoff(average, NumResidues, 10)
 	amber.DumpPairVectorAsText(pairs, "pairs.txt")
 	fmt.Println("Dumped", pairs.Len(), "pairs above cutoff to pairs.txt.")
 	correl := CalcCorrelations(flag.Args(), average, pairs, NumResidues)
-	correl = correl
+	//correl = correl
 	amber.DumpFloat32MatrixAsText(correl, pairs.Len(), "correl.txt")
 	fmt.Println("Dumped correlation matrix to correl.txt.")
 	fmt.Println(amber.Status())
