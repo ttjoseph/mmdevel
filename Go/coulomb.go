@@ -16,11 +16,10 @@ import (
 
 func main() {
 	var prmtopFilename, rstFilename, outFilename string
-	var numFrames int
-	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename")
+	var stride int
+	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename (required)")
 	flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename")
-	//flag.StringVar(&trjFilename, "x", "", "Trajectory (in text format) filename")
-	flag.IntVar(&numFrames, "n", 0, "Number of frames in trajectory to process")
+    flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
 	flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename")
 	flag.Parse()
     trjFilenames := flag.Args()
@@ -68,6 +67,8 @@ func main() {
 
 		amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt")
 	} else if len(trjFilenames) > 0 {
+    	fmt.Println("Frame stride:", stride)
+
 		// Lookup table for bond types so we don't calculate nonbonded energies
 		// between bonded atoms
 		bondType := makeBondTypeTable(mol)
@@ -77,7 +78,7 @@ func main() {
 		decompCh := make(chan *EnergyCalcRequest, 10)
 		// This goroutine will be fed the decomposition matrices made by the energy functions
 		fmt.Println("Writing residue decomposition matrices to", outFilename)
-		go decompProcessor(outFilename, mol.NumResidues(), numFrames, decompCh, ch)
+		go decompProcessor(outFilename, mol.NumResidues(), decompCh, ch)
 		numAtoms := mol.NumAtoms()
 		hasBox := false
 		if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
@@ -91,8 +92,10 @@ func main() {
         }
 
 		numKids := 0
-		for ; true ; {
-            // If there was an error, move on to the next trajectory file
+		frame := 0
+		strideCountdown := stride
+		for {
+            // If there was an error reading the next frame, move on to the next trajectory file
 			coords, err := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
             if err != nil {
                 fileId++
@@ -110,9 +113,14 @@ func main() {
     			    break
 			    }
             }
-
-			go calcSingleTrjFrame(mol, params, coords, numKids, bondType, residueMap, decompCh, ch)
-			numKids++
+            frame++
+            // Only actually process the frames indicated by stride
+            strideCountdown--
+            if strideCountdown == 0 {
+                strideCountdown = stride
+    			go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch)
+    			numKids++
+    		}
 		}
 
 		for i := 0; i < numKids; i++ {
@@ -123,12 +131,29 @@ func main() {
 	}
 }
 
+// XXX: Doesn't do anything
+func correlProcessor(numResidues int, ch chan *EnergyCalcRequest, termCh chan int) {
+	// For calculating the average
+	//sum := make([]float64, numResidues*numResidues)
+	//totalNumFrames := 0
+
+    
+    for {
+        if request := <- ch; request == nil {
+            break
+        }
+        
+        // Data is in request.Decomp. Each matrix is ~2MB for ~700 residues.
+        // We'll hang on to a bunch of them
+    }
+}
+
 // Does something with each decomposition matrix, which is currently writing them to disk.
 // This is a separate goroutine so that only one matrix is processed at a time, which is
 // convenient for writing to a disk.
 // XXX: Matrices are written out of order because we receive them in arbitrary order.
 // That should be OK for the correlation analysis though.
-func decompProcessor(filename string, numResidues, numFrames int, ch chan *EnergyCalcRequest, termCh chan int) {
+func decompProcessor(filename string, numResidues int, ch chan *EnergyCalcRequest, termCh chan int) {
 	// decompTotal := make([]float64, numResidues*numResidues);
 	// Output file
 	outFile, _ := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
