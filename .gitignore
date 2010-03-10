@@ -1,6 +1,11 @@
 *.6
+*.a
 ._*
 _obj/*
+*.cgo1.*
+*.cgo2.*
+_cgo_*
+*.pyc
 *.bin
 correl.txt
 decomp.txt
