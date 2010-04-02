@@ -6,6 +6,7 @@ import sys
 import re
 
 def do_command(cmd):
+    '''Runs a command and returns its output as a string.'''
     fin, fout = os.popen4(cmd)
     result = fout.read()
     fin.close()
@@ -13,6 +14,7 @@ def do_command(cmd):
     return result
     
 def parse_fields(s, field_lengths):
+    '''Splits a string into fields based on how long you say each field is.'''
     offset = 0
     data = []
     for field_length in field_lengths:
@@ -21,9 +23,6 @@ def parse_fields(s, field_lengths):
     return data
 
 qstat_out = do_command("qstat").split('\n')
-#                                                                 1234567890123456789012345678901
-# ----------------  ---------------- ----------------  -------- - -----
-# 1727.lapis        B2EVO            mobarj01          14:54:29 R serial_std      
 
 username = os.environ.get("USER")
 if(len(sys.argv) > 1):
@@ -31,6 +30,7 @@ if(len(sys.argv) > 1):
 print "%s's running jobs:" % username
 total_num_cpus = 0
 
+# See how many CPUs this user is using
 for i in xrange(2, len(qstat_out) - 1):
     line = qstat_out[i]
     x = parse_fields(line, [18, 17, 18, 9, 2, 10])
@@ -43,6 +43,7 @@ for i in xrange(2, len(qstat_out) - 1):
         total_num_cpus += num_cpus
         
 print "\n%s is using %d cores in total." % (username, total_num_cpus)
+# See how many CPUs are free across the entire cluster
 global_info = do_command("qstat -B -f")
 global_free_cpus = int(re.findall("Avail_Global:([0-9]+)", global_info)[0])
 global_used_cpus = int(re.findall("Used:([0-9]+)", global_info)[0])
