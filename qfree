@@ -1,0 +1,49 @@
+#!/usr/bin/python
+# Shows queue information - lapis/PBS Pro version
+# T. Joseph <thomas.joseph@mssm.edu>
+import os
+import sys
+import re
+
+def do_command(cmd):
+    fin, fout = os.popen4(cmd)
+    result = fout.read()
+    fin.close()
+    fout.close()
+    return result
+    
+def parse_fields(s, field_lengths):
+    offset = 0
+    data = []
+    for field_length in field_lengths:
+        data.append(s[offset:offset+field_length].strip())
+        offset += field_length
+    return data
+
+qstat_out = do_command("qstat").split('\n')
+#                                                                 1234567890123456789012345678901
+# ----------------  ---------------- ----------------  -------- - -----
+# 1727.lapis        B2EVO            mobarj01          14:54:29 R serial_std      
+
+username = os.environ.get("USER")
+if(len(sys.argv) > 1):
+	username = sys.argv[1]
+print "%s's running jobs:" % username
+total_num_cpus = 0
+
+for i in xrange(2, len(qstat_out) - 1):
+    line = qstat_out[i]
+    x = parse_fields(line, [18, 17, 18, 9, 2, 10])
+    job_id = x[0]
+    queue = x[5]
+    if x[2] == username and x[4] == 'R':
+        job_info = do_command("qstat -f %s" % job_id)
+        num_cpus = int(re.findall("Resource_List.ncpus = ([0-9]+)", job_info)[0])
+        print "  %s using %d cores in queue %s" % (job_id, num_cpus, queue)
+        total_num_cpus += num_cpus
+        
+print "\n%s is using %d cores in total." % (username, total_num_cpus)
+global_info = do_command("qstat -B -f")
+global_free_cpus = int(re.findall("Avail_Global:([0-9]+)", global_info)[0])
+global_used_cpus = int(re.findall("Used:([0-9]+)", global_info)[0])
+print "The whole cluster has %d of %d cores free." % (global_free_cpus, global_used_cpus+global_free_cpus)
