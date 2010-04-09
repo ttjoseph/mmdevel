@@ -34,12 +34,13 @@ total_num_cpus = 0
 for i in xrange(2, len(qstat_out) - 1):
     line = qstat_out[i]
     x = parse_fields(line, [18, 17, 18, 9, 2, 10])
-    job_id = x[0]
+    job_id = x[0].split('.')[0]
+    job_name = x[1]
     queue = x[5]
     if x[2] == username and x[4] == 'R':
         job_info = do_command("qstat -f %s" % job_id)
         num_cpus = int(re.findall("Resource_List.ncpus = ([0-9]+)", job_info)[0])
-        print "  %s using %d cores in queue %s" % (job_id, num_cpus, queue)
+        print "  %s (%s) using %d cores in queue %s" % (job_name, job_id, num_cpus, queue)
         total_num_cpus += num_cpus
         
 print "\n%s is using %d cores in total." % (username, total_num_cpus)
