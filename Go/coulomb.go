@@ -11,16 +11,49 @@ import (
 	"flag"
 	"os"
 	"bufio"
+	"runtime"
 	"amber"
 )
+
+func WriteInt32(file *os.File, d int) {
+    tmp := make([]uint8, 4)
+    binary.LittleEndian.PutUint32(tmp[0:4], uint32(d))
+    file.Write(tmp)
+}
+
+func WriteInt32Array(file *os.File, d []int) {
+    WriteInt32(file, len(d)); // Write size of array to file, then array itself
+    tmp := make([]uint8, len(d)*4)
+	for j, n := range (d) {
+		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], uint32(n))
+	}
+	file.Write(tmp)
+}
+
+func WriteInt8Array(file *os.File, d []uint8) {
+    WriteInt32(file, len(d)); // Write size of array to file, then array itself
+	file.Write(d)
+}
+
+func WriteFloat32Array(file *os.File, d []float32) {
+    WriteInt32(file, len(d)); // Write size of array to file, then array itself
+    tmp := make([]uint8, len(d)*4)
+	for j, n := range (d) {
+		binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
+	}
+	file.Write(tmp)
+}
 
 func main() {
 	var prmtopFilename, rstFilename, outFilename string
 	var stride int
+	var savePreprocessed bool;
+	
 	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename (required)")
 	flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename")
     flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
 	flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename")
+	flag.BoolVar(&savePreprocessed, "e", false, "Save prmtop preprocessed output (use with -c)")
 	flag.Parse()
     trjFilenames := flag.Args()
 
@@ -47,25 +80,48 @@ func main() {
 	params.LJ6 = amber.VectorAsFloat32Array(mol.Blocks["LENNARD_JONES_BCOEF"])     // CN2
 	params.Charges = amber.VectorAsFloat32Array(mol.Blocks["CHARGE"])
 	// If we were given a single snapshot, just do that one
-	if rstFilename != "" {
-		fmt.Printf("Calculating energies for single snapshot %s.\n", rstFilename)
-		mol.LoadRst(rstFilename)
-
+	if rstFilename != "" || savePreprocessed {
 		var request EnergyCalcRequest
+		if rstFilename != "" {
+    		fmt.Printf("Calculating energies for single snapshot %s.\n", rstFilename)
+		    mol.LoadRst(rstFilename)
+    		request.Coords = mol.Coords[0]
+	    }
+
 		request.NBParams = params
 		request.Molecule = mol
-		request.Coords = mol.Coords[0]
 		// Lookup table for bond types so we don't calculate electrostatics
 		// and such between bonded atoms
 		request.BondType = makeBondTypeTable(mol)
 		request.ResidueMap = makeResidueMap(mol)
 		request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())
+		
+		// Dump the preprocessed info to a file so a C version of this program can easily load and parse it
+		if savePreprocessed {
+		 	outFile, _ := os.Open("solute.top.tom", os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+        	defer outFile.Close()
+        	
+        	WriteInt32(outFile, mol.NumAtoms());
+        	WriteInt32(outFile, mol.NumResidues());
+        	WriteInt32(outFile, params.Ntypes);
+        	WriteInt32Array(outFile, params.NBIndices);
+        	WriteInt32Array(outFile, params.AtomTypeIndices);
+        	WriteFloat32Array(outFile, params.LJ12);
+        	WriteFloat32Array(outFile, params.LJ6);
+        	WriteFloat32Array(outFile, params.Charges);
+        	WriteInt8Array(outFile, request.BondType);
+        	WriteInt32Array(outFile, request.ResidueMap);
+        	
+        	fmt.Println("Wrote preprocessed prmtop data. Done!");
+        	os.Exit(0);
+	    }
 
 		fmt.Println("Electrostatic energy:", Electro(&request), "kcal/mol")
 		fmt.Println("van der Waals energy:", LennardJones(&request), "kcal/mol")
 		fmt.Println(amber.Status())
 
 		amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt")
+		fmt.Println("Saved decomposition matrix to decomp.txt");
 	} else if len(trjFilenames) > 0 {
     	fmt.Println("Frame stride:", stride)
 
@@ -75,7 +131,7 @@ func main() {
 		residueMap := makeResidueMap(mol)
 
 		ch := make(chan int)
-		decompCh := make(chan *EnergyCalcRequest, 32)
+		decompCh := make(chan []float64, 32)
 		// This goroutine will be fed the decomposition matrices made by the energy functions
 		fmt.Println("Writing residue decomposition matrices to", outFilename)
 		go decompProcessor(outFilename, mol.NumResidues(), decompCh, ch)
@@ -94,6 +150,7 @@ func main() {
 		numKids := 0
 		frame := 0
 		strideCountdown := stride
+		
 		for {
             // If there was an error reading the next frame, move on to the next trajectory file
 			coords, err := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
@@ -123,9 +180,11 @@ func main() {
     		}
 		}
 
-		for i := 0; i < numKids; i++ {
-			<-ch
-		}
+		if(false) {
+    		for i := 0; i < numKids; i++ {
+    			<-ch
+    		}
+    	}
 		decompCh <- nil
 		<-ch // Wait for decompProcessor to finish
 	}
@@ -136,28 +195,28 @@ func main() {
 // convenient for writing to a disk.
 // XXX: Matrices are written out of order because we receive them in arbitrary order.
 // That should be OK for the correlation analysis though.
-func decompProcessor(filename string, numResidues int, ch chan *EnergyCalcRequest, termCh chan int) {
+func decompProcessor(filename string, numResidues int, ch chan []float64, termCh chan int) {
 	// Output file
 	outFile, _ := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
 	defer outFile.Close()
 	tmp := make([]byte, numResidues*numResidues*4) // for converting to bytes
 	for {
-		request := <-ch
-		if request == nil {
+		decomp := <-ch
+		if decomp == nil {
 			break
 		}
 		// Actually do stuff with the data here.
 		// We could in theory do the correlation stuff now, but maybe we should
 		// just write the frames to disk.
 		// Dump to file. We have to explicitly convert to bytes. Yay.
-		for j, n := range (request.Decomp) {
+		for j, n := range (decomp) {
 			binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 		}
 		outFile.Write(tmp)
 	
 		// Put this decomp buffer back on the free list, or drop it on the floor for the GC
 		// to collect if there's no room (the assignment makes it nonblocking and don't care if fail)
-		_ = decompFreeList <- request.Decomp
+		_ = decompFreeList <- decomp
 	}
 	fmt.Println("decompProcessor finished. I wrote to", filename)
 	termCh <- 0 // Tell caller we're done
@@ -194,7 +253,7 @@ var decompFreeList = make(chan []float64, 32)
 
 // Calculates the nonbonded energies for a single snapshot.
 // Results are returned through reqOutCh.
-func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int, bondType []uint8, residueMap []int, reqOutCh chan *EnergyCalcRequest, ch chan int) {
+func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int, bondType []uint8, residueMap []int, reqOutCh chan []float64, ch chan int) {
 
 	var request EnergyCalcRequest
 	request.Molecule = mol
@@ -209,7 +268,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	    fmt.Println("Allocating a new decomposition matrix buffer.")
         request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    
     }
-
+    
 	/*  //DEBUG: print first few coordinates
 	    fmt.Printf("%d [%d]:", frame, len(coords));
 	    for i := 0; i < 6; i++ {
@@ -223,16 +282,17 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 		fmt.Println("Weird energies. Does your trajectory have boxes but your prmtop doesn't, or vice versa?")
 		os.Exit(1)
 	}
-	fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status())
+	fmt.Printf("%d: Electrostatic: %f vdW: %f\n", frame, elec, vdw)
 
-    // Release coords buffer
+    // Release coords buffer so it can be reused
     amber.ReleaseCoordsBuffer(coords)
     
 	// Send request to listening something that will probably average the decomp matrix
 	// but could in theory do whatever it wants.
-	reqOutCh <- &request
+	reqOutCh <- request.Decomp
 	// Return frame ID through channel
-	ch <- frame
+	//ch <- frame
+	runtime.Goexit()
 }
 
 
