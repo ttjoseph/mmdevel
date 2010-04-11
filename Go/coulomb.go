@@ -225,6 +225,9 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	}
 	fmt.Printf("%d: Electrostatic: %f vdW: %f %s\n", frame, elec, vdw, amber.Status())
 
+    // Release coords buffer
+    amber.ReleaseCoordsBuffer(coords)
+    
 	// Send request to listening something that will probably average the decomp matrix
 	// but could in theory do whatever it wants.
 	reqOutCh <- &request

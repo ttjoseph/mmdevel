@@ -492,6 +492,12 @@ func readLineFromOpenFile(fp *os.File) string {
 	return string(buf[0:i])
 }
 
+var coordsFreeList = make(chan []float32, 32)
+
+func ReleaseCoordsBuffer(coords []float32) {
+    _ = coordsFreeList <- coords
+}
+
 // Assumes file pointer is at the start of a frame
 func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([]float32, os.Error) {
 	// Calculate how many lines per frame
@@ -501,7 +507,14 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([
 	}
 	// fmt.Println("Lines per frame:", linesPerFrame);
 
-	coords := make([]float32, numAtoms*3)
+    var ok bool
+    var coords []float32
+	coords, ok = <-coordsFreeList
+	if (!ok) {
+	    fmt.Println("Allocating a new coords buffer.")
+	    coords = make([]float32, numAtoms*3)
+    }
+	
 	ci := 0
 
 	for i := 0; i < linesPerFrame; i++ {
