@@ -121,7 +121,7 @@ calc_ti <- function(basedir, steps)
 
 			# Look only at one half of the data
 			half_length = floor(length(dvdl) / 2)
-			# dvdl = dvdl[1:(half_length+1)]
+			dvdl = dvdl[1:(half_length+1)]
 			# dvdl = dvdl[half_length:length(dvdl)]
 
 			all[node_i] = mean(dvdl)

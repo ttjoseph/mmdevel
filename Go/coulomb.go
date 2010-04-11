@@ -75,7 +75,7 @@ func main() {
 		residueMap := makeResidueMap(mol)
 
 		ch := make(chan int)
-		decompCh := make(chan *EnergyCalcRequest, 10)
+		decompCh := make(chan *EnergyCalcRequest, 32)
 		// This goroutine will be fed the decomposition matrices made by the energy functions
 		fmt.Println("Writing residue decomposition matrices to", outFilename)
 		go decompProcessor(outFilename, mol.NumResidues(), decompCh, ch)
@@ -131,30 +131,12 @@ func main() {
 	}
 }
 
-// XXX: Doesn't do anything
-func correlProcessor(numResidues int, ch chan *EnergyCalcRequest, termCh chan int) {
-	// For calculating the average
-	//sum := make([]float64, numResidues*numResidues)
-	//totalNumFrames := 0
-
-    
-    for {
-        if request := <- ch; request == nil {
-            break
-        }
-        
-        // Data is in request.Decomp. Each matrix is ~2MB for ~700 residues.
-        // We'll hang on to a bunch of them
-    }
-}
-
 // Does something with each decomposition matrix, which is currently writing them to disk.
 // This is a separate goroutine so that only one matrix is processed at a time, which is
 // convenient for writing to a disk.
 // XXX: Matrices are written out of order because we receive them in arbitrary order.
 // That should be OK for the correlation analysis though.
 func decompProcessor(filename string, numResidues int, ch chan *EnergyCalcRequest, termCh chan int) {
-	// decompTotal := make([]float64, numResidues*numResidues);
 	// Output file
 	outFile, _ := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
 	defer outFile.Close()
@@ -172,15 +154,10 @@ func decompProcessor(filename string, numResidues int, ch chan *EnergyCalcReques
 			binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 		}
 		outFile.Write(tmp)
-		// Explicitly release our reference to the decomp matrix.
-		// If we don't do this, the GC seems to assume that all these pointer
-		// references still live inside this function and doesn't free them
-		// even though they have gone out of scope and nothing else is holding them.
-		// My theory is that it only checks for stuff it can free when pointer variables
-		// are given new values or when all functions that touched the object have returned.
-		// Who knows though...perhaps at a near-OOM state it would have tried harder
-		// to free up some memory?
-		request.Decomp = nil
+	
+		// Put this decomp buffer back on the free list, or drop it on the floor for the GC
+		// to collect if there's no room (the assignment makes it nonblocking and don't care if fail)
+		_ = decompFreeList <- request.Decomp
 	}
 	fmt.Println("decompProcessor finished. I wrote to", filename)
 	termCh <- 0 // Tell caller we're done
@@ -212,6 +189,9 @@ func openTrj(filename string) (*bufio.Reader, os.Error) {
 	return trj, nil
 }
 
+
+var decompFreeList = make(chan []float64, 32)
+
 // Calculates the nonbonded energies for a single snapshot.
 // Results are returned through reqOutCh.
 func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords []float32, frame int, bondType []uint8, residueMap []int, reqOutCh chan *EnergyCalcRequest, ch chan int) {
@@ -223,7 +203,12 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	request.Coords = coords
 	request.BondType = bondType
 	request.ResidueMap = residueMap
-	request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())
+	var ok bool
+	request.Decomp, ok = <-decompFreeList
+	if (!ok) {
+	    fmt.Println("Allocating a new decomposition matrix buffer.")
+        request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    
+    }
 
 	/*  //DEBUG: print first few coordinates
 	    fmt.Printf("%d [%d]:", frame, len(coords));
