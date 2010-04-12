@@ -11,6 +11,7 @@
 #define ANGLE 2
 #define DIHEDRAL 4
 
+// Loads stuff from disk
 // Assumes the array is in host endianness!
 int* loadIntArray(FILE *fp, int *size) {
   // Get number of elements in array
@@ -24,7 +25,6 @@ uint8_t* loadByteArray(FILE *fp, int *size) {
   // Get number of elements in array
   fread(size, sizeof(int), 1, fp);
   uint8_t *data = malloc(sizeof(uint8_t) * *size);
-  printf("byte array of length %d\n", *size);
   fread(data, sizeof(uint8_t), *size, fp);
   return data;
 }
@@ -39,6 +39,7 @@ float* loadFloatArray(FILE *fp, int *size) {
 
 int Rank, NumNodes; // For MPI
 
+// Synchronizes data by broadcasting it from the rank 0 node
 void syncIntArray(int **buf, int *size) {
   MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
@@ -84,6 +85,7 @@ void syncMolecule() {
   syncIntArray(&ResidueMap, &NumResidueMap);
 }
 
+// van der Waals calculation by Lennard-Jones 12-6 method as used by AMBER. No cutoffs etc
 double LennardJones(float *coords, double *decomp) {
   double energy = 0.0;
   int atom_i;
@@ -125,12 +127,11 @@ double LennardJones(float *coords, double *decomp) {
       
     }
   }
-  printf("[%d] LennardJones = %f\n", Rank, energy);
   return energy;
   
 }
 
-// Calculates pairwise electrostatic 
+// Calculates pairwise electrostatic energies; no cutoff/PME/etc
 double Electro(float *coords, double *decomp) {
   double energy = 0.0;
   int atom_i;
@@ -164,7 +165,6 @@ double Electro(float *coords, double *decomp) {
       
     }
   }
-  printf("[%d] Electro = %f\n", Rank, energy);
   return energy;
 }
 
@@ -186,12 +186,19 @@ int main (int argc, char const *argv[]) {
     printf("coulomb (C/MPI version) - T. Joseph <thomas.joseph@mssm.edu>\n\n");
     printf("Running on %d nodes.\n", NumNodes);
     
-    FILE *fp = fopen("solute.top.tom", "r");
+    if(argc < 4) {
+      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin>\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+      return 1;
+    }
+    
+    FILE *fp = fopen(argv[1], "r");
     if(!fp) {
       printf("Couldn't open preprocessed prmtop.\n");
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
+    
     
     // Load the preprocessed binary version of the prmtop
     fread(&Natoms, sizeof(int), 1, fp);
@@ -211,25 +218,22 @@ int main (int argc, char const *argv[]) {
       return 1;
     }
     
-    printf("Bondtype checksum = %d\n", checksum((char*)BondType, NumBondType));
-    
-    // Calculate stuff about the trajectory file
-    int hasBox = 1;
+    // Calculate how many lines per frame in the trajectory file, for ease of reading
+    int hasBox = 1; // XXX: We always assume there's a box
     int linesPerFrame = Natoms * 3 / 10;
     if(Natoms*3%10 != 0)
       linesPerFrame++;
-      
-    if(argc < 2) {
-      printf("No trajectory file specified.\n");
-      MPI_Abort(MPI_COMM_WORLD, 1);
-      return 1;
-    }
     
-    gzFile trj = gzopen(argv[1], "r");
+    // Open the trajectory file
+    gzFile trj = gzopen(argv[2], "r");
     char line[256];
     // Eat header line
     gzgets(trj, line, 256);
+    
+    // Open the md.ene.bin file - for writing raw decomposition matrices
+    FILE *eneOut = fopen(argv[3], "w");
   
+    // Tell all the worker nodes about the molecule we're examining
     syncMolecule();
     
     // Now that the molecule information is synchronized, we can ask the other nodes to
@@ -248,8 +252,10 @@ int main (int argc, char const *argv[]) {
     // Allocate request/coordinate buffers
     for(node = 0; node < (NumNodes-1); node++) {
       requestBuf[node] = (float*) malloc(sizeof(float) * (Natoms*3+1));
+      requestBuf[node][0] = 0.0f; // Keep on truckin'
       resultBuf[node] = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
     }
+    float *floatBuf = (float*) malloc(sizeof(float) * (Nresidues*Nresidues));
     
     MPI_Request requests[NumNodes-1];
     memset(requests, 0, sizeof(MPI_Request) * (NumNodes-1));
@@ -263,8 +269,11 @@ int main (int argc, char const *argv[]) {
           // Load a frame from the trajectory file. 10 reals per line, 8 chars per real
           int idx = 1, i, j;
           for(i = 0; i < linesPerFrame; i++) {
-            gzgets(trj, line, 256);
-            //printf(line);
+            char *ret = gzgets(trj, line, 256);
+            if(ret == NULL) {
+              // No frames left, so tell non-assigned nodes to quit and wait for all to finish (MPI_Waitall)
+              // TODO: this stuff
+            }
             int len = strlen(line);
             for(j = 0; j < len-1; j+=8) {
               requestBuf[node][idx] = (float) strtod(line+j, NULL);
@@ -273,11 +282,7 @@ int main (int argc, char const *argv[]) {
           }
           if(hasBox) gzgets(trj, line, 256); // Eat box info
           
-          // If none left, tell non-assigned nodes to quit and wait for all to finish (MPI_Waitall)
-        
-          occupied[node] = 1; // Mark this node as occupied
-          requestBuf[node][0] = 0.0f; // Keep on truckin'
-        
+          occupied[node] = 1; // Mark that node as occupied
           MPI_Send(requestBuf[node], Natoms*3+1, MPI_FLOAT, node+1, 0, MPI_COMM_WORLD);
           MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]);
         }
@@ -286,10 +291,18 @@ int main (int argc, char const *argv[]) {
       int index;
       MPI_Status status;
       MPI_Waitany(NumNodes-1, requests, &index, &status);
+      // node rank 1 is index 0 here
       if(index != MPI_UNDEFINED) {
         numFramesDone++;
-        printf("Node %d finished, %d frames done.\n", index+1, numFramesDone);
+        if((numFramesDone % 100) == 0)
+          printf("Frames done: %d\n", numFramesDone);
         occupied[index] = 0; // Mark that node as unoccupied
+        
+        // Convert decomp matrix to floats and dump it to the file
+        int k;
+        for(k = 0; k < (Nresidues*Nresidues); k++)
+          floatBuf[k] = (float) resultBuf[index][k];
+        fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
       } else {
         printf("%s:%d: MPI_Waitany failed with MPI_UNDEFINED\n", __FILE__, __LINE__);
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -297,18 +310,22 @@ int main (int argc, char const *argv[]) {
       }
     }
   } else {
+    // Worker node stuff
     // Receive prmtop information
     syncMolecule();
-    printf("[%d] Ntypes = %d, Natoms = %d, Nresidues = %d, NumNBIndices = %d, NumCharges = %d, NumBondType = %d\n", Rank, Ntypes, Natoms, Nresidues, NumNBIndices, NumCharges, NumBondType);
+    printf("[%d] Worker node synced and ready to rock!\n", Rank);
+    // printf("[%d] Ntypes = %d, Natoms = %d, Nresidues = %d, NumNBIndices = %d, NumCharges = %d, NumBondType = %d\n", Rank, Ntypes, Natoms, Nresidues, NumNBIndices, NumCharges, NumBondType);
     
     // Allocate request buffer
     float *requestBuf = (float*) malloc(sizeof(float) * (Natoms*3+1));
     double *resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
     memset(resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
+    int ret;
     
     for(;;) {
       // Receive request.
-      MPI_Recv(requestBuf, Natoms*3+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      ret = MPI_Recv(requestBuf, Natoms*3+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      if(ret != MPI_SUCCESS) break;
       // printf("[%d] Received request.\n", Rank);
       // If we are done, quit. Else, process and send results back; repeat.
       if(requestBuf[0] != 0.0f) {
@@ -317,9 +334,11 @@ int main (int argc, char const *argv[]) {
       }
       float *coords = requestBuf+1;
 
-      Electro(coords, resultBuf);
-      LennardJones(coords, resultBuf);
-      MPI_Send(resultBuf, Nresidues*Nresidues, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+      double eel = Electro(coords, resultBuf);
+      double vdw = LennardJones(coords, resultBuf);
+      printf("[%d] Electro: %f vdW: %f\n", Rank, eel, vdw);
+      ret = MPI_Send(resultBuf, Nresidues*Nresidues, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+      if(ret != MPI_SUCCESS) break;
     }
   }
   
