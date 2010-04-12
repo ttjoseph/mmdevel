@@ -39,7 +39,7 @@ func WriteFloat32Array(file *os.File, d []float32) {
     WriteInt32(file, len(d)); // Write size of array to file, then array itself
     tmp := make([]uint8, len(d)*4)
 	for j, n := range (d) {
-		binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
+		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 	}
 	file.Write(tmp)
 }
@@ -269,13 +269,13 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
         request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    
     }
     
-	/*  //DEBUG: print first few coordinates
-	    fmt.Printf("%d [%d]:", frame, len(coords));
-	    for i := 0; i < 6; i++ {
-	        fmt.Printf(" %f", coords[i]);
-	    }
-	    fmt.Println();
-	*/
+/*    //DEBUG: print first few coordinates
+        fmt.Printf("%d [%d]:", frame, len(coords));
+        for i := 0; i < 6; i++ {
+            fmt.Printf(" %f", coords[i]);
+        }
+        fmt.Println();
+*/	
 	elec := Electro(&request)
 	vdw := LennardJones(&request)
 	if math.IsNaN(elec) || math.IsNaN(vdw) {
@@ -421,6 +421,7 @@ func Electro(request *EnergyCalcRequest) float64 {
 		qi := charges[atom_i]
 		i_res := residueMap[atom_i] // Residue of atom i
 		// Iterate over all atoms
+		
 		for atom_j := 0; atom_j < atom_i; atom_j++ {
 			offs_j := atom_j * 3
 			x1, y1, z1 := coords[offs_j], coords[offs_j+1], coords[offs_j+2]
@@ -441,6 +442,7 @@ func Electro(request *EnergyCalcRequest) float64 {
 			decomp[i_res*numResidues+residueMap[atom_j]] += thisEnergy
 			decomp[i_res+residueMap[atom_j]*numResidues] += thisEnergy
 			energy += thisEnergy
+		
 		}
 	}
 	request.Energy = energy
