@@ -5,6 +5,7 @@
 
 #define COULOMB 332.0636
 #define EEL_14_SCALING_RECIP (1 / 1.2)
+#define VDW_14_SCALING_RECIP (1 / 2.0)
 // Flags for BondType
 #define BOND 1
 #define ANGLE 2
@@ -81,6 +82,52 @@ void syncMolecule() {
   syncFloatArray(&Charges, &NumCharges);
   syncByteArray(&BondType, &NumBondType);
   syncIntArray(&ResidueMap, &NumResidueMap);
+}
+
+double LennardJones(float *coords, double *decomp) {
+  double energy = 0.0;
+  int atom_i;
+	
+  for(atom_i = 0; atom_i < Natoms; atom_i++) {
+    int offs_i = atom_i * 3;
+    float x0 = coords[offs_i], y0 = coords[offs_i+1], z0 = coords[offs_i+2];
+    // Pulled some of the matrix indexing out of the inner loop
+    int nbparm_offs_i = Ntypes * (AtomTypeIndices[atom_i] - 1);
+    int bondtype_offs_i = atom_i * Natoms;
+    int i_res = ResidueMap[atom_i]; // Residue of atom i
+
+    int atom_j;
+    for(atom_j = 0; atom_j < atom_i; atom_j++) {
+      int offs_j = atom_j * 3;
+      float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
+      uint8_t thisBondType = BondType[atom_i*Natoms+atom_j];
+      // Skip this atom pair if they are connected by a bond or angle
+      if((thisBondType & (BOND|ANGLE)) != 0) continue;
+
+      // Distance reciprocals
+      float dx = x1-x0, dy = y1-y0, dz = z1-z0;
+      double distRecip = 1 / sqrtf(dx*dx+dy*dy+dz*dz);
+      double distRecip3 = distRecip * distRecip * distRecip;
+      double distRecip6 = distRecip3 * distRecip3;
+      
+      // Locate LJ params for this atom pair
+      int index = NBIndices[nbparm_offs_i+AtomTypeIndices[atom_j]-1] - 1;
+      double thisEnergy = LJ12[index]*distRecip6*distRecip6 - LJ6[index]*distRecip6;
+
+      // Are these atoms 1-4 to each other? If so, divide the energy
+			// by 1.2, as ff99 et al dictate.
+      if((thisBondType & DIHEDRAL) != 0)
+        thisEnergy *= VDW_14_SCALING_RECIP;
+      
+      decomp[i_res*Nresidues+ResidueMap[atom_j]] += thisEnergy;
+      decomp[i_res+ResidueMap[atom_j]*Nresidues] += thisEnergy;
+      energy += thisEnergy;
+      
+    }
+  }
+  printf("[%d] LennardJones = %f\n", Rank, energy);
+  return energy;
+  
 }
 
 // Calculates pairwise electrostatic 
@@ -229,7 +276,7 @@ int main (int argc, char const *argv[]) {
           // If none left, tell non-assigned nodes to quit and wait for all to finish (MPI_Waitall)
         
           occupied[node] = 1; // Mark this node as occupied
-          requestBuf[node][0] = 0.0f; // Keep on going
+          requestBuf[node][0] = 0.0f; // Keep on truckin'
         
           MPI_Send(requestBuf[node], Natoms*3+1, MPI_FLOAT, node+1, 0, MPI_COMM_WORLD);
           MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]);
@@ -269,14 +316,9 @@ int main (int argc, char const *argv[]) {
         break;
       }
       float *coords = requestBuf+1;
-          // int i;
-          // printf("[%d] ", Rank);
-          // for(i = 0; i < 12; i++) {
-          //   printf("%f ", coords[i]);
-          // }
-          // printf("\n");
 
       Electro(coords, resultBuf);
+      LennardJones(coords, resultBuf);
       MPI_Send(resultBuf, Nresidues*Nresidues, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
     }
   }
