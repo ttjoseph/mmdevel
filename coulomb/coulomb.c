@@ -64,6 +64,11 @@ void syncFloatArray(float **buf, int *size) {
   MPI_Bcast(*buf, *size, MPI_FLOAT, 0, MPI_COMM_WORLD);
 }
 
+void bomb(char *msg) {
+  printf("[%d] ERROR, aborting! %s\n", Rank);
+  MPI_Abort(MPI_COMM_WORLD, 1);
+  exit(1);
+}
 
 int Ntypes, Natoms, Nresidues;
 int *NBIndices, NumNBIndices;
@@ -195,12 +200,7 @@ int main (int argc, char *argv[]) {
     }
     
     FILE *fp = fopen(argv[1], "r");
-    if(!fp) {
-      printf("Couldn't open preprocessed prmtop.\n");
-      MPI_Abort(MPI_COMM_WORLD, 1);
-      return 1;
-    }
-    
+    if(!fp) bomb("Couldn't open preprocessed prmtop.");
     
     // Load the preprocessed binary version of the prmtop
     fread(&Natoms, sizeof(int), 1, fp);
@@ -262,7 +262,7 @@ int main (int argc, char *argv[]) {
     MPI_Request requests[NumNodes-1];
     memset(requests, 0, sizeof(MPI_Request) * (NumNodes-1));
     
-    int numFramesDone = 0;
+    int numFramesDone = 0, finished = 0, occupiedCount = 0;
     
     for(;;) {
       // Assign work to any unassigned nodes
@@ -273,8 +273,9 @@ int main (int argc, char *argv[]) {
           for(i = 0; i < linesPerFrame; i++) {
             char *ret = gzgets(trj, line, 256);
             if(ret == NULL) {
-              // No frames left, so tell non-assigned nodes to quit and wait for all to finish (MPI_Waitall)
-              // TODO: this stuff
+              // No frames left, so stop
+              finished = 1;
+              break;
             }
             int len = strlen(line);
             for(j = 0; j < len-1; j+=8) {
@@ -285,31 +286,50 @@ int main (int argc, char *argv[]) {
           if(hasBox) gzgets(trj, line, 256); // Eat box info
           
           occupied[node] = 1; // Mark that node as occupied
-          MPI_Send(requestBuf[node], Natoms*3+1, MPI_FLOAT, node+1, 0, MPI_COMM_WORLD);
-          MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]);
+          occupiedCount++;
+          // requestBuf[node][0] = 0.0f;
+          if(MPI_Send(requestBuf[node], Natoms*3+1, MPI_FLOAT, node+1, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+            bomb("MPI_Send assigning a request");
+          if(MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]) != MPI_SUCCESS)
+            bomb("MPI_Irecv receving results of a request");
         }
+        
+        if(finished) break; // Stop trying to assign more work
       }
     
-      int index;
+      int index, waitFor = 1;
+      // Collect results from all occupied nodes if we're finished
+      if(finished) waitFor = occupiedCount;
       MPI_Status status;
-      MPI_Waitany(NumNodes-1, requests, &index, &status);
-      // node rank 1 is index 0 here
-      if(index != MPI_UNDEFINED) {
-        numFramesDone++;
-        if((numFramesDone % 100) == 0)
-          printf("Frames done: %d\n", numFramesDone);
-        occupied[index] = 0; // Mark that node as unoccupied
+      int i;
+      for(i = 0; i < waitFor; i++) {
+        MPI_Waitany(NumNodes-1, requests, &index, &status);
+        // node rank 1 is index 0 here
+        if(index != MPI_UNDEFINED) {
+          numFramesDone++;
+          if((numFramesDone % 100) == 0)
+            printf("Frames done: %d\n", numFramesDone);
+          occupied[index] = 0; // Mark that node as unoccupied
+          occupiedCount--;
+          
+          // Tell node to quit if we're finished
+          if(finished) {
+            requestBuf[index][0] = 1.0f;
+            if(MPI_Send(requestBuf[index], Natoms*3+1, MPI_FLOAT, index+1, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+              bomb("MPI_Send Telling node to quit");
+          }
         
-        // Convert decomp matrix to floats and dump it to the file
-        int k;
-        for(k = 0; k < (Nresidues*Nresidues); k++)
-          floatBuf[k] = (float) resultBuf[index][k];
-        fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
-      } else {
-        printf("%s:%d: MPI_Waitany failed with MPI_UNDEFINED\n", __FILE__, __LINE__);
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        exit(1);
-      }
+          // Convert decomp matrix to floats and dump it to the file
+          int k;
+          for(k = 0; k < (Nresidues*Nresidues); k++)
+            floatBuf[k] = (float) resultBuf[index][k];
+          fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
+        } else {
+          bomb("MPI_Waitany failed with MPI_UNDEFINED");
+        }
+      } // for waitFor
+      
+      if(finished) break; // Quit in general
     }
     fclose(eneOut);
   } else {
@@ -323,12 +343,11 @@ int main (int argc, char *argv[]) {
     float *requestBuf = (float*) malloc(sizeof(float) * (Natoms*3+1));
     double *resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
     memset(resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
-    int ret;
     
     for(;;) {
       // Receive request.
-      ret = MPI_Recv(requestBuf, Natoms*3+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      if(ret != MPI_SUCCESS) break;
+      if(MPI_Recv(requestBuf, Natoms*3+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE) != MPI_SUCCESS)
+        bomb("Receiving request");
       // printf("[%d] Received request.\n", Rank);
       // If we are done, quit. Else, process and send results back; repeat.
       if(requestBuf[0] != 0.0f) {
@@ -340,8 +359,8 @@ int main (int argc, char *argv[]) {
       double eel = Electro(coords, resultBuf);
       double vdw = LennardJones(coords, resultBuf);
       printf("[%d] Electro: %f vdW: %f\n", Rank, eel, vdw);
-      ret = MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-      if(ret != MPI_SUCCESS) break;
+      if(MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+        bomb("Sending back results");
     }
   }
   
