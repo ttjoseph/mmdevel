@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
 #include <stdint.h>
 #include <zlib.h>
 #include <mpi.h>
@@ -78,11 +81,11 @@ void syncMolecule() {
   MPI_Bcast(&Ntypes, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   syncIntArray(&NBIndices, &NumNBIndices);
   syncIntArray(&AtomTypeIndices, &NumAtomTypeIndices);
+  syncIntArray(&ResidueMap, &NumResidueMap);
   syncFloatArray(&LJ12, &NumLJ12);
   syncFloatArray(&LJ6, &NumLJ6);
   syncFloatArray(&Charges, &NumCharges);
   syncByteArray(&BondType, &NumBondType);
-  syncIntArray(&ResidueMap, &NumResidueMap);
 }
 
 // van der Waals calculation by Lennard-Jones 12-6 method as used by AMBER. No cutoffs etc
@@ -162,7 +165,6 @@ double Electro(float *coords, double *decomp) {
       decomp[i_res*Nresidues+ResidueMap[atom_j]] += thisEnergy;
       decomp[i_res+ResidueMap[atom_j]*Nresidues] += thisEnergy;
       energy += thisEnergy;
-      
     }
   }
   return energy;
@@ -176,8 +178,8 @@ int checksum(char *data, int len) {
   return foo;
 }
 
-int main (int argc, char const *argv[]) {
-  MPI_Init(0, 0);
+int main (int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
   MPI_Comm_size(MPI_COMM_WORLD, &NumNodes);
   
@@ -309,6 +311,7 @@ int main (int argc, char const *argv[]) {
         exit(1);
       }
     }
+    fclose(eneOut);
   } else {
     // Worker node stuff
     // Receive prmtop information
@@ -337,7 +340,7 @@ int main (int argc, char const *argv[]) {
       double eel = Electro(coords, resultBuf);
       double vdw = LennardJones(coords, resultBuf);
       printf("[%d] Electro: %f vdW: %f\n", Rank, eel, vdw);
-      ret = MPI_Send(resultBuf, Nresidues*Nresidues, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+      ret = MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
       if(ret != MPI_SUCCESS) break;
     }
   }
