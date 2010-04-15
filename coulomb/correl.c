@@ -125,7 +125,7 @@ int main (int argc, char *argv[])
             ene += (double) buf[r*Nresidues+c];
           }
         }
-        printf("Frame %d energy: %f\n", frame, ene);
+        // printf("Frame %d energy: %f\n", frame, ene); // DEBUG
         
         int j;
         for(j = 0; j < Nresidues*Nresidues; j++)
