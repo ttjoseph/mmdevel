@@ -268,6 +268,11 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
         request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    
     }
     
+    // Since we're reusing buffers, we need to zero them out
+    for i := 0; i < len(request.Decomp); i++ {
+        request.Decomp[i] = 0.0
+    }
+    
 /*    //DEBUG: print first few coordinates
         fmt.Printf("%d [%d]:", frame, len(coords));
         for i := 0; i < 6; i++ {
