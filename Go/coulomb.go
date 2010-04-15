@@ -11,7 +11,6 @@ import (
 	"flag"
 	"os"
 	"bufio"
-	"runtime"
 	"amber"
 )
 
@@ -292,7 +291,6 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	reqOutCh <- request.Decomp
 	// Return frame ID through channel
 	//ch <- frame
-	runtime.Goexit()
 }
 
 
