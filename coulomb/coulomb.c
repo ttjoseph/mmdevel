@@ -65,7 +65,7 @@ void syncFloatArray(float **buf, int *size) {
 }
 
 void bomb(char *msg) {
-  printf("[%d] ERROR, aborting! %s\n", Rank);
+  printf("[%d] ERROR, aborting! %s\n", Rank, msg);
   MPI_Abort(MPI_COMM_WORLD, 1);
   exit(1);
 }
