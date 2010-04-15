@@ -306,7 +306,7 @@ func loadSingleFrame(fp *os.File, numResidues int, result []float32) {
 	tmp := make([]byte, numResidues*numResidues*4)
 	fp.Read(tmp) // Read whole frame
 	for j := 0; j < numResidues*numResidues; j++ {
-		result[j] = math.Float32frombits(binary.BigEndian.Uint32(tmp[j*4 : j*4+4]))
+		result[j] = math.Float32frombits(binary.LittleEndian.Uint32(tmp[j*4 : j*4+4]))
 	}
 }
 
