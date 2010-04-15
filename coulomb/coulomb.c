@@ -292,43 +292,47 @@ int main (int argc, char *argv[]) {
             bomb("MPI_Send assigning a request");
           if(MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]) != MPI_SUCCESS)
             bomb("MPI_Irecv receving results of a request");
-        }
+        } // if !occupied[node]
         
-      }
+      } // for(nodes)
     
       int index, waitFor = 1;
       // Collect results from all occupied nodes if we're finished
-      if(finished) waitFor = occupiedCount;
+      if(finished) {
+        waitFor = occupiedCount;
+        printf("OK, I think we're all finished. Just gotta get those last few frames: %d\n", waitFor);
+      }
       MPI_Status status;
       int i;
       for(i = 0; i < waitFor; i++) {
         MPI_Waitany(NumNodes-1, requests, &index, &status);
         // node rank 1 is index 0 here
-        if(index != MPI_UNDEFINED) {
-          numFramesDone++;
-          if((numFramesDone % 100) == 0)
-            printf("Frames done: %d\n", numFramesDone);
-          occupied[index] = 0; // Mark that node as unoccupied
-          occupiedCount--;
-          
-          // Tell node to quit if we're finished
-          if(finished) {
-            requestBuf[index][0] = 1.0f;
-            if(MPI_Send(requestBuf[index], Natoms*3+1, MPI_FLOAT, index+1, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
-              bomb("MPI_Send Telling node to quit");
-          }
-        
-          // Convert decomp matrix to floats and dump it to the file
-          int k;
-          for(k = 0; k < (Nresidues*Nresidues); k++)
-            floatBuf[k] = (float) resultBuf[index][k];
-          fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
-        } else {
+        if(index == MPI_UNDEFINED)
           bomb("MPI_Waitany failed with MPI_UNDEFINED");
-        }
+          
+        numFramesDone++;
+        if((numFramesDone % 100) == 0)
+          printf("Frames done: %d\n", numFramesDone);
+          
+        occupied[index] = 0; // Mark that node as unoccupied
+        occupiedCount--;
+        
+        // Convert decomp matrix to floats and dump it to the file
+        int k;
+        for(k = 0; k < (Nresidues*Nresidues); k++)
+          floatBuf[k] = (float) resultBuf[index][k];
+        fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
       } // for waitFor
       
-      if(finished) break; // Quit in general
+      if(finished) {
+        // Tell node to quit if we're finished
+        for(node = 1; node < NumNodes; node++) {
+          requestBuf[node-1][0] = 1.0f;
+          if(MPI_Send(requestBuf[node-1], Natoms*3+1, MPI_FLOAT, node, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+            bomb("MPI_Send Telling worker node to quit");
+        }
+        break; // Quit in general
+      }
     }
     fclose(eneOut);
   } else {
