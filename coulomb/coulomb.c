@@ -110,7 +110,7 @@ double LennardJones(float *coords, double *decomp) {
     for(atom_j = 0; atom_j < atom_i; atom_j++) {
       int offs_j = atom_j * 3;
       float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
-      uint8_t thisBondType = BondType[atom_i*Natoms+atom_j];
+      uint8_t thisBondType = BondType[bondtype_offs_i+atom_j];
       // Skip this atom pair if they are connected by a bond or angle
       if((thisBondType & (BOND|ANGLE)) != 0) continue;
 
