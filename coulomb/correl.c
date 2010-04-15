@@ -26,11 +26,11 @@ void syncIntArray(int **buf, int *size) {
   MPI_Bcast(*buf, *size, MPI_INTEGER, 0, MPI_COMM_WORLD);
 }
 
-int numFramesInFile(char *filename, int numResidues) {
+size_t numFramesInFile(char *filename, int numResidues) {
   int frameSize = numResidues*numResidues*sizeof(float);
   struct stat info;
   stat(filename, &info);
-  return (int) (info.st_size / frameSize);
+  return (size_t) (info.st_size / frameSize);
 }
 
 int min(int a, int b) {
@@ -145,8 +145,8 @@ int main (int argc, char *argv[])
     
     int fileIdx, keepGoing;
     for(fileIdx = 2; fileIdx < argc; fileIdx++) {
-      int numFrames = numFramesInFile(argv[fileIdx], Nresidues);
-      numFrames = 50; // DEBUG
+      size_t numFrames = numFramesInFile(argv[fileIdx], Nresidues);
+      // numFrames = 50; // DEBUG
       FILE *fp = fopen(argv[fileIdx], "r");
       // Load a batch of frames from the current file. We can't just inhale an entire file 
       // because we probably don't have enough RAM to do so.
