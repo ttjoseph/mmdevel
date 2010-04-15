@@ -39,6 +39,47 @@ int min(int a, int b) {
   return b;
 }
 
+// Assumes matrix is stored row by row
+void dumpIntMatrixToFile(char *filename, int *data, int numRows, int numCols) {
+  FILE *fp = fopen(filename, "w");
+  int row, col, ptr = 0;
+  for(row = 0; row < numRows; row++) {
+    for(col = 0; col < numCols; col++) {
+      if(col != 0) fprintf(fp, " ");
+      fprintf(fp, "%d", data[ptr++]);
+    }
+    fprintf(fp, "\n");
+  }
+  fclose(fp);
+}
+
+void dumpDoubleMatrixToFile(char *filename, double *data, int numRows, int numCols) {
+  FILE *fp = fopen(filename, "w");
+  int row, col, ptr = 0;
+  for(row = 0; row < numRows; row++) {
+    for(col = 0; col < numCols; col++) {
+      if(col != 0) fprintf(fp, " ");
+      fprintf(fp, "%f", data[ptr++]);
+    }
+    fprintf(fp, "\n");
+  }
+  fflush(fp);
+  fclose(fp);
+}
+
+void dumpFloatMatrixToFile(char *filename, float *data, int numRows, int numCols) {
+  FILE *fp = fopen(filename, "w");
+  int row, col, ptr = 0;
+  for(row = 0; row < numRows; row++) {
+    for(col = 0; col < numCols; col++) {
+      if(col != 0) fprintf(fp, " ");
+      fprintf(fp, "%f", data[ptr++]);
+    }
+    fprintf(fp, "\n");
+  }
+  fclose(fp);
+}
+
 int main (int argc, char *argv[])
 {
   MPI_Init(&argc, &argv);
@@ -77,6 +118,15 @@ int main (int argc, char *argv[])
       for(frame = 0; frame < numFrames; frame++) {
         // Load a matrix and add it to the running total
         fread(buf, sizeof(float), Nresidues*Nresidues, fp);
+        int r, c;
+        double ene = 0.0;
+        for(r = 0; r < Nresidues; r++) {
+          for(c = 0; c <= r; c++) {
+            ene += (double) buf[r*Nresidues+c];
+          }
+        }
+        printf("Frame %d energy: %f\n", frame, ene);
+        
         int j;
         for(j = 0; j < Nresidues*Nresidues; j++)
           averageEnergies[j] += (double) buf[j];
@@ -90,15 +140,18 @@ int main (int argc, char *argv[])
     // technique of counting how many there are on a first pass, then allocating an array of the
     // correct size, then actually storing the indices on a second pass. The matrix is small enough
     // that doubling the runtime won't be noticed on today's monster computers.
-    int j, numPairs = 0;
+    int j;
     for(j = 0; j < Nresidues*Nresidues; j++) {
       averageEnergies[j] /= (double) totalNumFrames;
     }
+    
+    dumpDoubleMatrixToFile("average.txt", averageEnergies, Nresidues, Nresidues);
+    printf("Dumped average matrix to average.txt.\n");
 
     // Workers need this to calculate correlation matrix
     MPI_Bcast(averageEnergies, Nresidues*Nresidues, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
-    int res_i, res_j;
+    int res_i, res_j, numPairs = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
       for(res_j = 0; res_j < res_i; res_j++) {
         if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= CUTOFF)
@@ -106,10 +159,7 @@ int main (int argc, char *argv[])
       }
     }
     
-    printf("Found %d pairs above cutoff of %.1f kcal/mol.\n", numPairs, CUTOFF);
-    
-    int *pairsList = malloc(2*numPairs*sizeof(int));
-    int ptr = 0;
+    int *pairsList = malloc(2*numPairs*sizeof(int)), ptr = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
       for(res_j = 0; res_j < res_i; res_j++) {
         if(averageEnergies[Nresidues*res_i+res_j] >= CUTOFF) {
@@ -119,6 +169,9 @@ int main (int argc, char *argv[])
         }
       }
     }
+    
+    dumpIntMatrixToFile("pairs.txt", pairsList, numPairs, 2);
+    printf("Found %d pairs above cutoff of %.1f kcal/mol; dumped to pairs.txt.\n", numPairs, CUTOFF);
     
     // OK! Now we have the pairs list. Now to calculate the correlation matrix (numPairs*numPairs).
     
@@ -154,7 +207,7 @@ int main (int argc, char *argv[])
       for(i = 0; i < numFrames; i += FRAME_BATCH_SIZE) {
         int thisBlockSize = min(numFrames - i, FRAME_BATCH_SIZE);
         int frame;
-        printf("Calculating correlation matrix: On file %s, frames %d to %d.\n", argv[fileIdx], i, i + thisBlockSize);
+        printf("Calculating pairs correlation matrix: On file %s, frames %d to %d.\n", argv[fileIdx], i, i + thisBlockSize);
         for(frame = 0; frame < thisBlockSize; frame++) {
           // Load a frame
           fread(buf, sizeof(float), Nresidues*Nresidues, fp);
@@ -169,7 +222,7 @@ int main (int argc, char *argv[])
           for(pair = 0; pair < numPairs; pair++) {
             int pair_i = pairsList[pair*2];
             int pair_j = pairsList[pair*2+1];
-            pairsEnergies[thisBlockSize * pair + frame] = buf[numPairs*pair_i+pair_j];
+            pairsEnergies[thisBlockSize * pair + frame] = buf[Nresidues*pair_i+pair_j];
           }
         } // iterating over frames within block
         
@@ -201,25 +254,40 @@ int main (int argc, char *argv[])
     // We do this serially because
     //   a) I couldn't get MPI_Irecv/MPI_Waitall to work properly
     //   b) Latency is not important at this stage anyhow
-    double *numLocal[NumNodes];
-    double *denomLocal[NumNodes];
-    MPI_Request numRequests[NumNodes], denomRequests[NumNodes];
-    memset(numRequests, 0, sizeof(MPI_Request) * NumNodes);
-    memset(denomRequests, 0, sizeof(MPI_Request) * NumNodes);
-    for(node = 1; node < NumNodes; node++) {
-      numLocal[node] = malloc(sizeof(double) * localSizes[node]);
-      denomLocal[node] = malloc(sizeof(double) * localSizes[node]);
-      MPI_Recv(numLocal[node], localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      MPI_Recv(denomLocal[node], localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-
-    // Assemble num and denom from the pieces we just received
+    // Also: Assemble num and denom from the pieces we just received
     double *num = malloc(numPairs*numPairs*sizeof(double));
     double *denom = malloc(numPairs*numPairs*sizeof(double));
-    // ...
+    for(node = 1; node < NumNodes; node++) {
+      double *numLocal = malloc(sizeof(double) * localSizes[node]);
+      double *denomLocal = malloc(sizeof(double) * localSizes[node]);
+      MPI_Recv(numLocal, localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(denomLocal, localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      // M[numPairs*ij+kl] <- M'[ij_b*m+kl] where m = ij-ij_a
+      size_t ij, kl, ij_a = rowsToCalculate[node-1], ij_b = rowsToCalculate[node];
+      for(ij = ij_a; ij < ij_b; ij++) {
+        size_t m = ij-ij_a; // "local" row index
+        for(kl = 0; kl < ij; kl++) {
+          size_t offs = ij_b*m+kl;
+          num[numPairs*ij+kl] = num[numPairs*kl+ij] = numLocal[offs];
+          denom[numPairs*ij+kl] = denom[numPairs*kl+ij] = denomLocal[offs];
+        }
+      }
+      free(numLocal);
+      free(denomLocal);
+    }
+    
+    // Now that we've reassembled num and denom, divide them to give final correlation matrix.
+    // This can be floats because we're just going to dump it to a file, and we want to save memory.
+    float *correl = malloc(numPairs*numPairs*sizeof(float));
+    for(i = 0; i < (numPairs*numPairs); i++)
+      correl[i] = (float)(num[i]/denom[i]);
+      
+    dumpFloatMatrixToFile("correl.txt", correl, numPairs, numPairs);
+    printf("Dumped pairs correlation matrix to correl.txt.\n");
     
     // Projection! Sometime in the future probably! For now the Go implementation is
-    // probably fast enough.
+    // probably fast enough. Also in an MPI version each process would use a huge amount
+    // of memory.
     
   } else {
     // We are a worker node. Our mission is to serve.
@@ -262,6 +330,7 @@ int main (int argc, char *argv[])
       // Actually do the calculation.
       int ij, kl;
       for(ij = ij_a; ij < ij_b; ij++) {
+        int m = ij-ij_a; // "local" row index
         for(kl = 0; kl < ij; kl++) {
           int i = pairsList[ij*2], j = pairsList[ij*2+1];
           int k = pairsList[kl*2], l = pairsList[kl*2+1];
@@ -274,12 +343,11 @@ int main (int argc, char *argv[])
             //   denom[numPairs*ij+kl] += sqrt(a*a*b*b);
             // But we don't have num and denom, so we need to convert the location (ij, kl) into an
             // index into our local piece of the num and denom matrices and store these values there.
-            //   M[numPairs*ij+kl] -> M'[(ij_a+m)*m+kl] where m = ij-ij_a
+            //   M[numPairs*ij+kl] -> M'[ij_b*m+kl] where m = ij-ij_a
             // This indexing method wastes space, but whatever, it's simple. We take all
             // rows to have width ij_b and just don't use the upper half on the right side
             // of our local slab. We could do fancier indexing to save that space but the
             // user won't notice all the extra effort we went to.
-            int m = ij-ij_a; // "local" row index
             int offs = ij_b*m+kl;
             numLocal[offs] += a*b;
             denomLocal[offs] += sqrt(a*a*b*b);
@@ -290,8 +358,9 @@ int main (int argc, char *argv[])
       // End repeat.
     }
 
-    // Don't need this anymore
+    // Don't need thess anymore
     free(averageEnergies);
+    free(pairsEnergies);
     // Send back our local piece of num and denom
     MPI_Send(numLocal, localSize, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
     free(numLocal); // Free up space in case the master node is running on this machine
@@ -300,7 +369,7 @@ int main (int argc, char *argv[])
       
     // For the future, potentially:
     //   Broadcast the finished correlation matrix from master. (That could be a problem because
-    //     it could be nearly 2GB in size.)
+    //     it could be nearly 2GB in size - and you need the whole thing to do the projection.)
     //   Receive range of residues to do the projection with (e.g., range of rows).
     //   Project the correlation matrix back onto the residues, resulting in residue interaction matrix.
     //   Send back the rows of the residue interaction matrix we just calculated.
