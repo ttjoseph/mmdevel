@@ -283,8 +283,8 @@ int main (int argc, char *argv[]) {
               idx++;
             }
           }
+          if(finished) break; // Stop trying to assign more work
           if(hasBox) gzgets(trj, line, 256); // Eat box info
-          
           occupied[node] = 1; // Mark that node as occupied
           occupiedCount++;
           // requestBuf[node][0] = 0.0f;
@@ -294,7 +294,6 @@ int main (int argc, char *argv[]) {
             bomb("MPI_Irecv receving results of a request");
         }
         
-        if(finished) break; // Stop trying to assign more work
       }
     
       int index, waitFor = 1;
