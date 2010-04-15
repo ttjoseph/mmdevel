@@ -341,7 +341,6 @@ int main (int argc, char *argv[]) {
     // Allocate request buffer
     float *requestBuf = (float*) malloc(sizeof(float) * (Natoms*3+1));
     double *resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
-    memset(resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
     
     for(;;) {
       // Receive request.
