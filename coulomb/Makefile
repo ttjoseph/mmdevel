@@ -1,5 +1,5 @@
 CC=mpicc
-CFLAGS=-O2
+CFLAGS=-O2 -g -Wall
 LDFLAGS=-lz -lm
 
 all : coulomb correl
@@ -12,4 +12,4 @@ correl : correl.o
 	$(CC) $(CFLAGS) -c $<
 	
 clean :
-	-rm -f coulomb coulomb.o
+	-rm -f coulomb coulomb.o correl correl.o
