@@ -286,7 +286,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 		fmt.Println("Weird energies. Does your trajectory have boxes but your prmtop doesn't, or vice versa?")
 		os.Exit(1)
 	}
-	fmt.Printf("%d: Electrostatic: %f vdW: %f\n", frame, elec, vdw)
+	fmt.Printf("%d: Electrostatic: %f vdW: %f Total: %f\n", frame, elec, vdw, elec+vdw)
 
     // Release coords buffer so it can be reused
     amber.ReleaseCoordsBuffer(coords)
