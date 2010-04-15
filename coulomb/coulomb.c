@@ -335,7 +335,7 @@ int main (int argc, char *argv[]) {
     // Worker node stuff
     // Receive prmtop information
     syncMolecule();
-    printf("[%d] Worker node synced and ready to rock!\n", Rank);
+    // printf("[%d] Worker node synced and ready to rock!\n", Rank);
     // printf("[%d] Ntypes = %d, Natoms = %d, Nresidues = %d, NumNBIndices = %d, NumCharges = %d, NumBondType = %d\n", Rank, Ntypes, Natoms, Nresidues, NumNBIndices, NumCharges, NumBondType);
     
     // Allocate request buffer
@@ -355,9 +355,20 @@ int main (int argc, char *argv[]) {
       }
       float *coords = requestBuf+1;
 
+      memset(resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
       double eel = Electro(coords, resultBuf);
       double vdw = LennardJones(coords, resultBuf);
-      printf("[%d] Electro: %f vdW: %f\n", Rank, eel, vdw);
+      
+      // DEBUG
+      int r, c;
+      double ene = 0.0;
+      for(r = 0; r < Nresidues; r++) {
+        for(c = 0; c <= r; c++) {
+          ene += (double) resultBuf[r*Nresidues+c];
+        }
+      }
+      
+      printf("[%d] Electro: %f vdW: %f Total: %f FakeTotal: %f\n", Rank, eel, vdw, eel+vdw, ene);
       if(MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
         bomb("Sending back results");
     }
