@@ -210,7 +210,7 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 		// just write the frames to disk.
 		// Dump to file. We have to explicitly convert to bytes. Yay.
 		for j, n := range (decomp) {
-			binary.BigEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
+			binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 		}
 		outFile.Write(tmp)
 	
