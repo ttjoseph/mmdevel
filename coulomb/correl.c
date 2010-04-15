@@ -12,6 +12,12 @@
 int Rank, NumNodes;
 int Nresidues;
 
+void bomb(char *msg) {
+  printf("[%d] ERROR, aborting! %s\n", Rank, msg);
+  MPI_Abort(MPI_COMM_WORLD, 1);
+  exit(1);
+}
+
 // Synchronizes data by broadcasting it from the rank 0 node
 void syncIntArray(int **buf, int *size) {
   MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
