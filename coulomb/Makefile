@@ -1,12 +1,14 @@
 CC=mpicc
 CFLAGS=-O2 -g -Wall
-LDFLAGS=-lz -lm
+LDFLAGS=-lz -lm -lpthread
 
-all : coulomb correl
+all : coulomb correl projection
 
 coulomb : coulomb.o 
 
 correl : correl.o
+
+projection : projection.o
 
 %.o : %.c
 	$(CC) $(CFLAGS) -c $<
