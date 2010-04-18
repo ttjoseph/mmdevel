@@ -7,6 +7,14 @@ ev_C = load('C.PCA.eigenvectors.dat');
 ev_CA = load('CA.PCA.eigenvectors.dat');
 orig_CB = load('CB.PCA.eigenvectors.dat');
 
+% Now, eigenvectors are stored one per line, so we transpose.
+% carma stored them in columns for some bizarre reason but we aren't
+% using that anymore.
+ev_N = ev_N';
+ev_C = ev_C';
+ev_CA = ev_CA';
+orig_CB = orig_CB';
+
 % Coordinates of relevant atoms
 solute_N = load('solute_N.pdb.dat');
 solute_C = load('solute_C.pdb.dat');
