@@ -66,6 +66,7 @@ void* projectPiece(void *ptr) {
 
 int main (int argc, char const *argv[]) {
   printf("projection (C version) - T. Joseph <thomas.joseph@mssm.edu>\n\n");
+  printf("Using %d threads.\n", NUM_THREADS);
 
   if(argc < 2) {
     printf("Usage: <num-residues>\n\nWe assume you want to load correl.txt and pairs.txt and write to rescorrel.txt.\n");
