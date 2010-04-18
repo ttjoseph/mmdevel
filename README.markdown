@@ -1,5 +1,5 @@
 Molecular modeling scripts and suchlike
----------------------------------------
+===
 
 This is a collection of software that I wrote and use in the course of
 my research, which involves molecular dynamics and other such molecular
