@@ -23,15 +23,18 @@ for this_ev = 1:5
     % This is important!!
     eucdist = eucdist / max(max(eucdist));
     %similarity = (1 ./ eucdist) .* curlsim;
-    dissimilarity = (eucdist > 0.25) .* (curlsim < 0.5);
+    % dissimilarity = (eucdist > 0.25) .* (curlsim < 0.5);
+    dissimilarity = eucdist .* curlsim;
     
     %similarity(isnan(similarity)) = 0;
     %similarity(isinf(similarity)) = 0;
     dissimilarity(isnan(dissimilarity)) = 0;
     dissimilarity(isinf(dissimilarity)) = 0;
-    
+
     filename = ['dissimilarity.ev', num2str(this_ev), '.out'];
     save(filename, 'dissimilarity', '-ascii');
+    filename = ['curlsim.ev', num2str(this_ev), '.out'];
+    save(filename, 'curlsim', '-ascii');
     %eucdist_thres = (eucdist > 0.3) .* ones(num_atoms, num_atoms);
     %save('eucdist.test.out', 'eucdist_thres', '-ascii');
 end
