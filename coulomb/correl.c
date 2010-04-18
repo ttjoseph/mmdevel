@@ -236,8 +236,6 @@ int main (int argc, char *argv[])
         // Matrix height is numPairs. Then, the data itself.
         MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
         MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD);
-        
-        
       } // iterating over frame blocks
 
       // Done with this file
@@ -285,10 +283,6 @@ int main (int argc, char *argv[])
     dumpFloatMatrixToFile("correl.txt", correl, numPairs, numPairs);
     printf("Dumped pairs correlation matrix to correl.txt.\n");
     
-    // Projection! Sometime in the future probably! For now the Go implementation is
-    // probably fast enough. Also in an MPI version each process would use a huge amount
-    // of memory.
-    
   } else {
     // We are a worker node. Our mission is to serve.
     MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
@@ -325,14 +319,13 @@ int main (int argc, char *argv[])
       int thisBlockSize;
       MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
       MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD);
-      // printf("[%d] Received pairsEnergies matrix with %d floats in it.\n", Rank, thisBlockSize*numPairs);
     
       // Actually do the calculation.
       int ij, kl;
       for(ij = ij_a; ij < ij_b; ij++) {
         int m = ij-ij_a; // "local" row index
+        int i = pairsList[ij*2], j = pairsList[ij*2+1];
         for(kl = 0; kl < ij; kl++) {
-          int i = pairsList[ij*2], j = pairsList[ij*2+1];
           int k = pairsList[kl*2], l = pairsList[kl*2+1];
           int t;
           for(t = 0; t < thisBlockSize; t++) {
@@ -358,7 +351,7 @@ int main (int argc, char *argv[])
       // End repeat.
     }
 
-    // Don't need thess anymore
+    // Don't need these anymore
     free(averageEnergies);
     free(pairsEnergies);
     // Send back our local piece of num and denom
@@ -367,13 +360,6 @@ int main (int argc, char *argv[])
     MPI_Send(denomLocal, localSize, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
     free(denomLocal);
       
-    // For the future, potentially:
-    //   Broadcast the finished correlation matrix from master. (That could be a problem because
-    //     it could be nearly 2GB in size - and you need the whole thing to do the projection.)
-    //   Receive range of residues to do the projection with (e.g., range of rows).
-    //   Project the correlation matrix back onto the residues, resulting in residue interaction matrix.
-    //   Send back the rows of the residue interaction matrix we just calculated.
-
     // Finished!
   }
   MPI_Finalize();
