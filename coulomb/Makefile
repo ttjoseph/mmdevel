@@ -14,4 +14,4 @@ projection : projection.o
 	$(CC) $(CFLAGS) -c $<
 	
 clean :
-	-rm -f coulomb coulomb.o correl correl.o
+	-rm -f coulomb coulomb.o correl correl.o projection projection.o
