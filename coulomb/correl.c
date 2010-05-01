@@ -19,13 +19,14 @@ void bomb(char *msg) {
 }
 
 // Synchronizes data by broadcasting it from the rank 0 node
-void syncIntArray(int **buf, int *size) {
+void broadcastIntArray(int **buf, int *size) {
   MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(int) * *size);
   MPI_Bcast(*buf, *size, MPI_INTEGER, 0, MPI_COMM_WORLD);
 }
 
+// Returns the number of frames in a file with numResidues*numResidues*sizeof(float) bytes per frame
 size_t numFramesInFile(char *filename, int numResidues) {
   int frameSize = numResidues*numResidues*sizeof(float);
   struct stat info;
@@ -33,6 +34,7 @@ size_t numFramesInFile(char *filename, int numResidues) {
   return (size_t) (info.st_size / frameSize);
 }
 
+// Returns minimum of integers a and b
 int min(int a, int b) {
   if(a < b)
     return a;
@@ -53,6 +55,7 @@ void dumpIntMatrixToFile(char *filename, int *data, int numRows, int numCols) {
   fclose(fp);
 }
 
+// Dumps a matrix of doubles to a text file
 void dumpDoubleMatrixToFile(char *filename, double *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
   int row, col, ptr = 0;
@@ -67,6 +70,7 @@ void dumpDoubleMatrixToFile(char *filename, double *data, int numRows, int numCo
   fclose(fp);
 }
 
+// Dumps a matrix of floats to a text file
 void dumpFloatMatrixToFile(char *filename, float *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
   int row, col, ptr = 0;
@@ -100,7 +104,8 @@ int main (int argc, char *argv[])
     
     Nresidues = atoi(argv[1]);
     printf("You said there are %d residues. I hope that's correct.\n", Nresidues);
-    MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+    if(MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+      bomb("Broadcasting number of residues");
     
     // Calculate average energies
     // Create and zero out the average energies matrix
@@ -149,7 +154,8 @@ int main (int argc, char *argv[])
     printf("Dumped average matrix to average.txt.\n");
 
     // Workers need this to calculate correlation matrix
-    MPI_Bcast(averageEnergies, Nresidues*Nresidues, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    if(MPI_Bcast(averageEnergies, Nresidues*Nresidues, MPI_DOUBLE, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+      bomb("Broadcasting averageEnergies matrix");
     
     int res_i, res_j, numPairs = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
@@ -177,7 +183,7 @@ int main (int argc, char *argv[])
     
     // Broadcast the pairs list.
     int pairsListSize = 2*numPairs;
-    syncIntArray(&pairsList, &pairsListSize);
+    broadcastIntArray(&pairsList, &pairsListSize);
     
     float *pairsEnergies = malloc(numPairs*FRAME_BATCH_SIZE*sizeof(float));
     // Once we know numPairs we can determine rowsToCalculate, so we only have to send it once.
@@ -194,7 +200,8 @@ int main (int argc, char *argv[])
     }
     // Make sure rounding error doesn't leave a row uncalculated
     rowsToCalculate[NumNodes] = numPairs;
-    MPI_Bcast(rowsToCalculate, NumNodes, MPI_INTEGER, 0, MPI_COMM_WORLD);
+    if(MPI_Bcast(rowsToCalculate, NumNodes, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+      bomb("Broadcasting rowsToCalculate");
     
     int fileIdx, keepGoing;
     for(fileIdx = 2; fileIdx < argc; fileIdx++) {
@@ -231,11 +238,14 @@ int main (int argc, char *argv[])
         // There are a zillion MPI calls below but they are executed pretty infrequently, so I am
         // not bothering with coalescing them.
         keepGoing = 1; // Keep on truckin' - we've got frames to process
-        MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+        if(MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+          bomb("Broadcasting keepGoing");
         // Broadcast this pairs-energies matrix. First, how many frames: matrix width.
         // Matrix height is numPairs. Then, the data itself.
-        MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
-        MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        if(MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+          bomb("Broadcasting thisBlockSize");
+        if(MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+          bomb("Broadcasting pairsEnergies");
       } // iterating over frame blocks
 
       // Done with this file
@@ -244,7 +254,8 @@ int main (int argc, char *argv[])
 
     // Done with all files
     keepGoing = 0;
-    MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+    if(MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+      bomb("Broadcasting stop signal");
     // Free up some memory
     free(pairsEnergies);
     
@@ -291,7 +302,7 @@ int main (int argc, char *argv[])
 
     // Broadcast the pairs list from master.
     int *pairsList, pairsListSize;
-    syncIntArray(&pairsList, &pairsListSize);
+    broadcastIntArray(&pairsList, &pairsListSize);
     int numPairs = pairsListSize/2;
     // printf("[%d] Hi there. I was told there are %d residues and %d pairs.\n", Rank, Nresidues, numPairs);
     float *pairsEnergies = malloc(numPairs*FRAME_BATCH_SIZE*sizeof(float));

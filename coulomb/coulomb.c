@@ -43,7 +43,7 @@ float* loadFloatArray(FILE *fp, int *size) {
 int Rank, NumNodes; // For MPI
 
 // Synchronizes data by broadcasting it from the rank 0 node
-void syncIntArray(int **buf, int *size) {
+void broadcastIntArray(int **buf, int *size) {
   MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(int) * *size);
@@ -84,9 +84,9 @@ void syncMolecule() {
   MPI_Bcast(&Natoms, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
   MPI_Bcast(&Ntypes, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
-  syncIntArray(&NBIndices, &NumNBIndices);
-  syncIntArray(&AtomTypeIndices, &NumAtomTypeIndices);
-  syncIntArray(&ResidueMap, &NumResidueMap);
+  broadcastIntArray(&NBIndices, &NumNBIndices);
+  broadcastIntArray(&AtomTypeIndices, &NumAtomTypeIndices);
+  broadcastIntArray(&ResidueMap, &NumResidueMap);
   syncFloatArray(&LJ12, &NumLJ12);
   syncFloatArray(&LJ6, &NumLJ6);
   syncFloatArray(&Charges, &NumCharges);
@@ -305,7 +305,8 @@ int main (int argc, char *argv[]) {
       MPI_Status status;
       int i;
       for(i = 0; i < waitFor; i++) {
-        MPI_Waitany(NumNodes-1, requests, &index, &status);
+        if(MPI_Waitany(NumNodes-1, requests, &index, &status) != MPI_SUCCESS)
+          bomb("MPI_Waitany");
         // node rank 1 is index 0 here
         if(index == MPI_UNDEFINED)
           bomb("MPI_Waitany failed with MPI_UNDEFINED");
