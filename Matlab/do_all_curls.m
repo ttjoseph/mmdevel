@@ -7,15 +7,21 @@ for this_ev = 1:5
     num_atoms = size(the_curl, 1); % Redundant but whatever
     eucdist = zeros(num_atoms, num_atoms); % Euclidean distance (pairwise)
     curlsim = zeros(num_atoms, num_atoms); % Curl similarity (pairwise)
+    evsim = zeros(num_atoms, num_atoms); % EV component vector similarity (pairwise)
+    the_ev = reshape(ev_CA(:, 1), num_atoms, 3);
     for i = 1:num_atoms
         for j = 1:i
             eucdist(i, j) = sqrt(sum((solute_CA(i, :) - solute_CA(j, :)) .^ 2));
             eucdist(j, i) = eucdist(i, j);
             a = the_curl(i, :) / norm(the_curl(i, :));
             b = the_curl(j, :) / norm(the_curl(j, :));
-            
             curlsim(i, j) = dot(a, b);
             curlsim(j, i) = curlsim(i, j);
+
+            a = the_ev(i, :) / norm(the_ev(i, :));
+            b = the_ev(j, :) / norm(the_ev(j, :));
+            evsim(i, j) = dot(a, b);
+            evsim(j, i) = evsim(i, j);
         end
     end
     
@@ -31,6 +37,8 @@ for this_ev = 1:5
     dissimilarity(isnan(dissimilarity)) = 0;
     dissimilarity(isinf(dissimilarity)) = 0;
 
+    filename = ['evsim.ev', num2str(this_ev), '.out'];
+    save(filename, 'evsim', '-ascii');
     filename = ['dissimilarity.ev', num2str(this_ev), '.out'];
     save(filename, 'dissimilarity', '-ascii');
     filename = ['curlsim.ev', num2str(this_ev), '.out'];
