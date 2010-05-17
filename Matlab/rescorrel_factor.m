@@ -4,6 +4,6 @@ function [data] = rescorrel_effect(rc, a, b)
 
 data = zeros(length(a),1);
 
-for i = a
-    data(i) = sum(rc(i,b));
+for i = 1:length(a)
+    data(i) = sum(rc(a(i),b));
 end
