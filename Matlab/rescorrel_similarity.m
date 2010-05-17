@@ -6,7 +6,8 @@ function [s] = rescorrel_similarity(rc1, rc2)
 %   pair is not considered.
 %
 %   Returns a fraction representing similarity, with a maximum of 1.
-%   This result should be compared with 
+%   This result should be compared with the similaritiy of two random matrices,
+%   by whatever measure of randomness you deem appropriate.
 %
 %   Tom Joseph <thomas.joseph@mssm.edu>
 
@@ -14,7 +15,7 @@ if size(rc1) ~= size(rc2)
     error('Sizes of rescorrel matrices must be the same.')
 end
 
-percentile = 0.75;
+percentile = 0.9;
 
 rc1v = sort(rc1(:));
 rc2v = sort(rc2(:));
@@ -23,5 +24,5 @@ rc2_upper = rc2v(floor(length(rc2v) * percentile + 1));
 
 m = (rc1 > rc1_upper) & (rc2 > rc2_upper);
 m2 = (rc1 > rc1_upper) | (rc2 > rc2_upper);
-imagesc(m)
+% imagesc(m2 - m)
 s = sum(m(:)) / sum(m2(:));
