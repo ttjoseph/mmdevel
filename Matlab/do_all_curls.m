@@ -1,4 +1,8 @@
 % Runs curl calcuation for several essential modes
+subplot_rows = 5;
+subplot_cols = 2;
+subplot_i = 1;
+figure;
 for this_ev = 1:5
     the_curl = do_hayward_curl(this_ev, ev_N, ev_C, ev_CA, ev_CB, solute_N, solute_C, solute_CA, solute_CB);
     filename = ['curl.ev', num2str(this_ev), '.out'];
@@ -46,4 +50,18 @@ for this_ev = 1:5
     save(filename, 'curlsim', '-ascii');
     %eucdist_thres = (eucdist > 0.3) .* ones(num_atoms, num_atoms);
     %save('eucdist.test.out', 'eucdist_thres', '-ascii');
+
+    % Plot stuff so we can save it later
+    subplot(subplot_rows, subplot_cols, subplot_i);
+    imagesc(evsim);
+    ylabel(['EV ', num2str(this_ev)]);
+    subplot_i = subplot_i + 1;
+    subplot(subplot_rows, subplot_cols, subplot_i);
+    imagesc(curlsim);
+    subplot_i = subplot_i + 1;
 end
+me = char(pwd());
+me = me(length(me)-2:length(me));
+suplabel([me, ' EV and curl similarity matrices'], 't');
+fillPage(gcf, 'margins', [0 0 0 0], 'papersize', [8.5 11]);
+print('-dpdf', ['sim_', me, '.pdf']);
