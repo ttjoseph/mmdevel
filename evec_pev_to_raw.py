@@ -4,12 +4,13 @@
 # one eigenvector per line.
 import sys
 import math
+import getopt
 
 def load_frame(file, num_coords=None):
     # Eat comment line
     s = file.readline()
     if len(s) == 0:
-        return None
+        return (None, 0)
     dimension = file.readline().strip().split()
     dimension[0] = int(dimension[0])
     dimension[1] = float(dimension[1])
@@ -36,20 +37,51 @@ def load_frame(file, num_coords=None):
             frame.append(float(x))
             # print "%f" % x
     
-    return frame
+    return (frame, num_coords)
 
-# Load average structure
-avg = load_frame(sys.stdin)
-num_coords = len(avg)
+# N CA CB C
+atom = ''
+atom_order = ['N', 'CA', 'CB', 'C']
+opts, args = getopt.getopt(sys.argv[1:], 'a:')
+for o, a in opts:
+    if o == '-a':
+        if a not in atom_order:
+            print >>sys.stderr, "Must choose one of N CA CB C, not %d" % a
+            sys.exit(1)
+        atom = a
+
+# Load average structure - this guesses and sets num_coords
+avg, num_coords = load_frame(sys.stdin)
+
+# Delete CB for Gly residues (as prescribed by the missing_CB.dat file)
+f = open("missing_CB.dat")
+data = f.readlines()
+missing_CB = [int(x) for x in data]
+
+# Make a list of atom names corresponding to indices.
+# Each group of 3 coords is xyz. So there should be numres*3*4 - numGly*3 coords.
+num_residues = int((num_coords + 3*len(missing_CB))/4/3)
+if atom != '':
+    print >>sys.stderr, "Number of residues: %d" % num_residues
+atom_list = []
+for atom_id in xrange(1, num_residues*3+1):
+    atom_list.append('N')
+    atom_list.append('CA')
+    if atom_id not in missing_CB:
+        atom_list.append('CB')
+    atom_list.append('C')
 
 while True:
-    frame = load_frame(sys.stdin, num_coords)
+    frame, num_coords = load_frame(sys.stdin, num_coords)
     if frame is None:
         break
     first = True
-    for x in frame:
+    atom_id = 0
+    for i in xrange(0, len(frame), 3):
         if not first:
             sys.stdout.write(" ")
-        sys.stdout.write(str(x))
+        if atom == '' or atom_list[i/3] == atom:
+            sys.stdout.write("%f %f %f" % (frame[i], frame[i+1], frame[i+2]))
         first = False
+        atom_id += 1
     sys.stdout.write("\n")
