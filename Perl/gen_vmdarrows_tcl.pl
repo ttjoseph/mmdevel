@@ -10,7 +10,7 @@
 open STRUCT, $ARGV[0] or die "Couldn't open structure file $ARGV[0]\n";
 open VECS, $ARGV[1] or die "Couldn't open vectors file $ARGV[1]\n";
 
-$scale = 70;
+$scale = 200;
 
 print "proc vmd_draw_arrow {mol start end} {\n";
 print "   # Shamelessly ripped off from a FORTRAN program by E. Giudice\n";
