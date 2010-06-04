@@ -1,9 +1,9 @@
 % Runs curl calcuation for several essential modes
 subplot_rows = 5;
-subplot_cols = 2;
+subplot_cols = 4;
 subplot_i = 1;
 figure;
-for this_ev = 1:5
+for this_ev = 1:10
     the_curl = do_hayward_curl(this_ev, ev_N, ev_C, ev_CA, ev_CB, solute_N, solute_C, solute_CA, solute_CB);
     filename = ['curl.ev', num2str(this_ev), '.out'];
     save(filename, 'the_curl', '-ascii');
@@ -31,26 +31,29 @@ for this_ev = 1:5
     end
     
     % Calculate the dissimilarity matrix!
-    % This is important!!
+    % This is not that important!!
     eucdist = eucdist / max(max(eucdist));
     %similarity = (1 ./ eucdist) .* curlsim;
     % dissimilarity = (eucdist > 0.25) .* (curlsim < 0.5);
-    dissimilarity = eucdist .* curlsim;
-    
+    % dissimilarity = eucdist .* curlsim;
     %similarity(isnan(similarity)) = 0;
     %similarity(isinf(similarity)) = 0;
-    dissimilarity(isnan(dissimilarity)) = 0;
-    dissimilarity(isinf(dissimilarity)) = 0;
+    % dissimilarity(isnan(dissimilarity)) = 0;
+    % dissimilarity(isinf(dissimilarity)) = 0;
 
     filename = ['evsim.ev', num2str(this_ev), '.out'];
     save(filename, 'evsim', '-ascii');
-    filename = ['dissimilarity.ev', num2str(this_ev), '.out'];
-    save(filename, 'dissimilarity', '-ascii');
+    % filename = ['dissimilarity.ev', num2str(this_ev), '.out'];
+    % save(filename, 'dissimilarity', '-ascii');
     filename = ['curlsim.ev', num2str(this_ev), '.out'];
     save(filename, 'curlsim', '-ascii');
-    %eucdist_thres = (eucdist > 0.3) .* ones(num_atoms, num_atoms);
-    %save('eucdist.test.out', 'eucdist_thres', '-ascii');
-
+    
+    % Save the eigenvectors themselves in a format friendly to
+    % the VMD arrow drawing script generator
+    ev = reshape(ev_CA(:, this_ev), 3, num_atoms);
+    ev = ev';
+    save(['ev', num2str(this_ev), '.dat'], 'ev', '-ascii');
+    
     % Plot stuff so we can save it later
     subplot(subplot_rows, subplot_cols, subplot_i);
     imagesc(evsim);
