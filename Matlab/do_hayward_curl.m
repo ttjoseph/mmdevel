@@ -39,7 +39,7 @@ while coord < num_coords
   
     % Now to make the matrix of differences in absolute coordinates
     % of the atoms in question
-    % Order: C CA CB in rows, x y z in cols
+    % Order: C N CB in rows, x y z in cols
     xyz_CA = [ solute_CA(atom, X:Z)
                solute_CA(atom, X:Z)
                solute_CA(atom, X:Z) ];
@@ -54,9 +54,13 @@ while coord < num_coords
     % If this piece of the calculation doesn't include a nonexistent
     % CB atom, this set of partials is valid, so record it
     if ~any(isnan(coord_diff_CA))
-        dVx(atom, X:Z) = coord_diff_CA \ dx_CA;
-        dVy(atom, X:Z) = coord_diff_CA \ dy_CA;
-        dVz(atom, X:Z) = coord_diff_CA \ dz_CA;
+        % dVx(atom, X:Z) = coord_diff_CA \ dx_CA;
+        % dVy(atom, X:Z) = coord_diff_CA \ dy_CA;
+        % dVz(atom, X:Z) = coord_diff_CA \ dz_CA;
+        inv_coord_diff_CA = inv(coord_diff_CA);
+        dVx(atom, X:Z) = inv_coord_diff_CA * dx_CA;
+        dVy(atom, X:Z) = inv_coord_diff_CA * dy_CA;
+        dVz(atom, X:Z) = inv_coord_diff_CA * dz_CA;
     end
     % Calculate the curl vector at this point
     the_curl(atom, X:Z) = [ dVz(atom, Y) - dVy(atom, Z)
