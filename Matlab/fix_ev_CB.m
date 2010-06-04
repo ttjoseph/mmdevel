@@ -2,10 +2,12 @@
 % the other ev_* arrays
 % Requires missing_CB and ev_CB to already be loaded from files
 num_coords = size(orig_CB, 1) + size(missing_CB, 1) * 3;
-num_orig_coords = size(orig_CB, 2);
-ev_CB = zeros(num_coords, num_orig_coords);
+num_evs = size(orig_CB, 2);
+ev_CB = zeros(num_coords, num_evs);
+ev_CB(ev_CB == 0) = NaN;
 num_atoms = num_coords / 3;
 solute_CB = zeros(num_atoms, 3);
+solute_CB(solute_CB == 0) = NaN;
 counter_CB = 1;
 for atom = 1:num_atoms
     % We loop over the uniform atom indices
