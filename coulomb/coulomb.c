@@ -84,6 +84,7 @@ int CharmmMode = 0;
 
 // Synchronize parameters for the molecule
 void syncMolecule() {
+  MPI_Bcast(&CharmmMode, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&Natoms, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&Nresidues, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&Ntypes, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -92,6 +93,10 @@ void syncMolecule() {
   broadcastIntArray(&ResidueMap, &NumResidueMap);
   syncFloatArray(&LJ12, &NumLJ12);
   syncFloatArray(&LJ6, &NumLJ6);
+  if(CharmmMode) {
+    syncFloatArray(&LJ12_14, &NumLJ12_14);
+    syncFloatArray(&LJ6_14, &NumLJ6_14);
+  }
   syncFloatArray(&Charges, &NumCharges);
   syncByteArray(&BondType, &NumBondType);
 }
@@ -131,7 +136,7 @@ double LennardJones(float *coords, double *decomp) {
 			// by 1.2, as ff99 et al dictate.
       if((thisBondType & DIHEDRAL) != 0) {
         if(CharmmMode)
-          thisEnergy += LJ12_14[index]*distRecip6*distRecip6 - LJ6_14[index]*distRecip6;
+          thisEnergy = LJ12_14[index]*distRecip6*distRecip6 - LJ6_14[index]*distRecip6;
         else
           thisEnergy *= VDW_14_SCALING_RECIP;
       }
