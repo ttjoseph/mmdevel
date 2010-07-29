@@ -44,21 +44,21 @@ int Rank, NumNodes; // For MPI
 
 // Synchronizes data by broadcasting it from the rank 0 node
 void broadcastIntArray(int **buf, int *size) {
-  MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(int) * *size);
-  MPI_Bcast(*buf, *size, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(*buf, *size, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
 void syncByteArray(uint8_t **buf, int *size) {
-  MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(uint8_t) * *size);
   MPI_Bcast(*buf, *size, MPI_BYTE, 0, MPI_COMM_WORLD);
 }
 
 void syncFloatArray(float **buf, int *size) {
-  MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(float) * *size);
   MPI_Bcast(*buf, *size, MPI_FLOAT, 0, MPI_COMM_WORLD);
@@ -75,15 +75,18 @@ int *NBIndices, NumNBIndices;
 int *AtomTypeIndices, NumAtomTypeIndices;
 float *LJ12; int NumLJ12;
 float *LJ6; int NumLJ6;
+float *LJ12_14; int NumLJ12_14; // CHARMM's special 1-4 terms
+float *LJ6_14; int NumLJ6_14;
 float *Charges; int NumCharges;
 uint8_t *BondType; int NumBondType;
 int *ResidueMap, NumResidueMap;
+int CharmmMode = 0;
 
 // Synchronize parameters for the molecule
 void syncMolecule() {
-  MPI_Bcast(&Natoms, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&Ntypes, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&Natoms, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&Nresidues, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&Ntypes, 1, MPI_INT, 0, MPI_COMM_WORLD);
   broadcastIntArray(&NBIndices, &NumNBIndices);
   broadcastIntArray(&AtomTypeIndices, &NumAtomTypeIndices);
   broadcastIntArray(&ResidueMap, &NumResidueMap);
@@ -126,8 +129,12 @@ double LennardJones(float *coords, double *decomp) {
 
       // Are these atoms 1-4 to each other? If so, divide the energy
 			// by 1.2, as ff99 et al dictate.
-      if((thisBondType & DIHEDRAL) != 0)
-        thisEnergy *= VDW_14_SCALING_RECIP;
+      if((thisBondType & DIHEDRAL) != 0) {
+        if(CharmmMode)
+          thisEnergy += LJ12_14[index]*distRecip6*distRecip6 - LJ6_14[index]*distRecip6;
+        else
+          thisEnergy *= VDW_14_SCALING_RECIP;
+      }
       
       decomp[i_res*Nresidues+ResidueMap[atom_j]] += thisEnergy;
       decomp[i_res+ResidueMap[atom_j]*Nresidues] += thisEnergy;
@@ -194,7 +201,7 @@ int main (int argc, char *argv[]) {
     printf("Running on %d nodes.\n", NumNodes);
     
     if(argc < 4) {
-      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin>\n");
+      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [charmm]\n");
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
@@ -213,6 +220,14 @@ int main (int argc, char *argv[]) {
     Charges = loadFloatArray(fp, &NumCharges);
     BondType = loadByteArray(fp, &NumBondType);
     ResidueMap = loadIntArray(fp, &NumResidueMap);
+    if(argc > 4 && strncmp(argv[4], "charmm", 6) == 0) {
+      printf("CHARMM mode on - that means I'm reading extra LJ 1-4 terms from %s.\n", argv[1]);
+      CharmmMode = 1;
+      LJ12_14 = loadFloatArray(fp, &NumLJ12_14);
+      LJ6_14 = loadFloatArray(fp, &NumLJ6_14);
+      if(NumLJ12_14 != NumLJ12 || NumLJ6_14 != NumLJ6)
+        bomb("Extra CHARMM terms not correctly read. I give up.\n");
+    }
     
     if((int)sqrt(NumBondType) != Natoms) {
       printf("sqrt(NumBondType) = %d should be equal to Natoms = %d\n", (int)sqrt(NumBondType), Natoms);
@@ -363,16 +378,7 @@ int main (int argc, char *argv[]) {
       double eel = Electro(coords, resultBuf);
       double vdw = LennardJones(coords, resultBuf);
       
-      // DEBUG
-      int r, c;
-      double ene = 0.0;
-      for(r = 0; r < Nresidues; r++) {
-        for(c = 0; c <= r; c++) {
-          ene += (double) resultBuf[r*Nresidues+c];
-        }
-      }
-      
-      printf("[%d] Electro: %f vdW: %f Total: %f FakeTotal: %f\n", Rank, eel, vdw, eel+vdw, ene);
+      printf("[%d] Electro: %f vdW: %f Total: %f\n", Rank, eel, vdw, eel+vdw);
       if(MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
         bomb("Sending back results");
     }
