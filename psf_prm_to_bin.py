@@ -108,7 +108,9 @@ for index in xrange(num_atoms):
     if resname == "CYS" and atomname == "SG":
         cys_sg_list.append(atom_index)
     
-    charges.append(charge)
+    # AMBER pre-multiplies by sqrt of coulomb constant
+    # See http://ambermd.org/Questions/units.html
+    charges.append(charge*math.sqrt(332.0636))
     atom_types.append(atomtype)
     residue_map.append(resid)
     
@@ -263,6 +265,7 @@ for i in xrange(0, len(dihedrals), 4):
     atom_j = dihedrals[i+3] - 1
     if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
         continue
+    # print "%d %d" % (atom_i, atom_j)
     bond_type[num_solute_atoms*atom_i+atom_j] |= DIHEDRAL
     bond_type[num_solute_atoms*atom_j+atom_i] |= DIHEDRAL
 
