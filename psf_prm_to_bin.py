@@ -112,16 +112,18 @@ for index in xrange(num_atoms):
     # See http://ambermd.org/Questions/units.html
     charges.append(charge*math.sqrt(332.0636))
     atom_types.append(atomtype)
-    residue_map.append(resid)
     
+    # Are we in a new residue? If so, increment the residue count
     if last_resid != resid: num_residues += 1
     last_resid = resid
+    residue_map.append(num_residues)
     
     if found_end_of_solute is False and resname == "TIP3":
         found_end_of_solute = True
-        num_solute_atoms = atom_index - 1
         num_solute_residues = num_residues
         print "Looks like you have %d solute atoms (guessed by taking the atoms before the first water)." % num_solute_atoms
+        
+    if found_end_of_solute is False: num_solute_atoms += 1
 
 psf.readline() # Blank line
 
@@ -234,7 +236,7 @@ for i in xrange(num_atom_types):
         counter += 1
         
 # Matrix of bond types
-print "Making %d MB array for bond type cache. Sorry, this is really slow." % (num_solute_atoms**2 / 1048576)
+print "Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576)
 bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
 for i in xrange(0, len(bonds), 2):
     atom_i = bonds[i] - 1
