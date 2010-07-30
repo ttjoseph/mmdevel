@@ -155,7 +155,6 @@ the_types = list(set(atom_types))
 num_atom_types = len(the_types)
 print "There are %d distinct atom types." % len(the_types)
 # num_solute_atoms should be equal to the index of the first solvent atom
-atom_type_nums = [the_types.index(x) for x in atom_types]
 
 # We need to extract the LJ terms from the prm file. Happily, we don't
 # need anything else from it (since we are only doing nonbonded energies).
@@ -164,13 +163,10 @@ while l[0:4] != "NONB":
     l = prm.readline().strip()
 if l[-1] == '-': l = prm.readline().strip() # Eat extra nonsense
 
-nuke_comment_re = re.compile('!.*$')
+nuke_comment_re = re.compile('!.*$') # Regexp to get rid of comments
 # We assume the HBOND line is the end of the nonbonded parameters
-prm_type = []
-prm_epsilon = []
-prm_rmin2 = []
-prm_eps14 = []
-prm_rmin214 = []
+prm_type, prm_epsilon, prm_rmin2 = [], [], []
+prm_eps14, prm_rmin214 = [], []
 while True:
     l = prm.readline()
     if l == "":
@@ -220,8 +216,8 @@ for i in xrange(num_atom_types):
         #     int index = NBIndices[nbparm_offs_i+AtomTypeIndices[atom_j]-1] - 1;
         #     double thisEnergy = LJ12[index]*distRecip6*distRecip6 - LJ6[index]*distRecip6;
         # print "%s vs %s: %d %d" % (the_types[i], the_types[j], idx_a, idx_b)
-        nb_indices[num_atom_types*i+j] = counter
-        nb_indices[num_atom_types*j+i] = counter
+        nb_indices[num_atom_types*i+j] = counter+1 # Don't forget stupid FORTRAN 1-based indexing
+        nb_indices[num_atom_types*j+i] = counter+1
         # From CHARMM prm_all27:
         # V(Lennard-Jones) = Eps,i,j[(Rmin,i,j/ri,j)**12 - 2(Rmin,i,j/ri,j)**6]
         # epsilon: kcal/mole, Eps,i,j = sqrt(eps,i * eps,j)
@@ -236,7 +232,7 @@ for i in xrange(num_atom_types):
             lj1214[counter] = eps14 * rmin14**12
             lj614[counter] = 2 * eps14 * rmin**6
         counter += 1
-
+        
 # Matrix of bond types
 print "Making %d MB array for bond type cache. Sorry, this is really slow." % (num_solute_atoms**2 / 1048576)
 bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
@@ -275,7 +271,7 @@ for i in xrange(0, len(dihedrals), 4):
 put_i32(out, num_solute_atoms)
 print "I suspect there are %d residues in the solute." % num_solute_residues
 put_i32(out, num_solute_residues)
-put_i32(out, len(the_types))
+put_i32(out, num_atom_types)
 
 # Output NBIndices
 put_i32_array(out, nb_indices)
@@ -283,6 +279,8 @@ put_i32_array(out, nb_indices)
 # Matrix of non-bonded terms indices - one cell for each atom type pair
 #   This allows us to locate LJ params for a particular atom pair
 # AtomTypeIndices: Array of atom type indices - atom types indexed by atom id
+# AMBER does one-based indexing so that's what we had used before
+atom_type_nums = [the_types.index(x)+1 for x in atom_types]
 put_i32_array(out, atom_type_nums[0:num_solute_atoms])
 
 # Output LJ12, LJ6

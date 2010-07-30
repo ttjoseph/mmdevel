@@ -132,10 +132,10 @@ double LennardJones(float *coords, double *decomp) {
       int index = NBIndices[nbparm_offs_i+AtomTypeIndices[atom_j]-1] - 1;
       double thisEnergy = LJ12[index]*distRecip6*distRecip6 - LJ6[index]*distRecip6;
 
-      // Are these atoms 1-4 to each other? If so, divide the energy
-			// by 1.2, as ff99 et al dictate.
+      // Are these atoms 1-4 to each other? If so, divide the energy by 1.2, as ff99 et al dictate.
+      // Unless we are in CHARMM mode, in which case use the separate 1-4 terms instead.
       if((thisBondType & DIHEDRAL) != 0) {
-        if(CharmmMode)
+        if(CharmmMode) // Hopefully branch prediction means this isn't a big speed hit
           thisEnergy = LJ12_14[index]*distRecip6*distRecip6 - LJ6_14[index]*distRecip6;
         else
           thisEnergy *= VDW_14_SCALING_RECIP;
@@ -175,8 +175,8 @@ double Electro(float *coords, double *decomp) {
       double thisEnergy = (qi * Charges[atom_j]) / sqrtf(dx*dx+dy*dy+dz*dz);
 
       // Are these atoms 1-4 to each other? If so, divide the energy
-			// by 1.2, as ff99 et al dictate.
-      if((thisBondType & DIHEDRAL) != 0)
+			// by 1.2, as ff99 et al dictate, but not for CHARMM.
+      if(!CharmmMode && (thisBondType & DIHEDRAL) != 0)
         thisEnergy *= EEL_14_SCALING_RECIP;
       
       decomp[i_res*Nresidues+ResidueMap[atom_j]] += thisEnergy;
@@ -384,6 +384,11 @@ int main (int argc, char *argv[]) {
       double vdw = LennardJones(coords, resultBuf);
       
       printf("[%d] Electro: %f vdW: %f Total: %f\n", Rank, eel, vdw, eel+vdw);
+      if(isnan(eel+vdw) || isinf(eel+vdw)) {
+        bomb("Something's gone terribly wrong with the energy calculation. "
+          "Did you forget to add box information to the trajectory file?");
+      }
+      
       if(MPI_Send(resultBuf, Nresidues*Nresidues, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
         bomb("Sending back results");
     }
