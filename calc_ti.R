@@ -56,7 +56,7 @@ corrtime <- function(dvdl, lambda_weight = 1, timestep = 0.002, doplot = TRUE)
 		counter = counter + 1
 	}
 
-	corrtime_guess = mean(ptb[(length(ptb) - 150):(length(ptb) - 1)])
+	corrtime_guess = mean(ptb[(length(ptb) - 200):(length(ptb) - 1)])
 	my_ene_error = sd(dvdl) / sqrt((length(dvdl) * timestep) / (2 * corrtime_guess))
 
 	print.noquote(paste("Upper bound for correlation time is probably roughly", signif(corrtime_guess,3), "ps."))
