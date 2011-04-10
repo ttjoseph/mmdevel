@@ -242,6 +242,7 @@ int main (int argc, char *argv[]) {
     
     // Calculate how many lines per frame in the trajectory file, for ease of reading
     int hasBox = 1; // XXX: We always assume there's a box
+    printf("Assuming your trajectory has a box.\n");
     int linesPerFrame = Natoms * 3 / 10;
     if(Natoms*3%10 != 0)
       linesPerFrame++;
