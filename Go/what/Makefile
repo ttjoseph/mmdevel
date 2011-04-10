@@ -1,11 +1,13 @@
-include $(GOROOT)/src/Make.$(GOARCH)
+include $(GOROOT)/src/Make.inc
 
 TARG=what
 
 CGOFILES=\
 	what.go
 
-CGO_CFLAGS=
-CGO_LDFLAGS=
-
 include $(GOROOT)/src/Make.pkg
+
+%: install %.go
+	$(GC) $*.go
+	$(LD) -o $@ $*.$O
+

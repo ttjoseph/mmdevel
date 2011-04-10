@@ -146,7 +146,7 @@ func LoadSystem(prmtopFilename string) *System {
 
 		// FORMAT line
 		s, err = prmtop.ReadString('\n')
-		fmtSpec := formatRe.MatchStrings(s)
+		fmtSpec := formatRe.FindAllString(s, 0)
 
 		var numThings, thingLen int
 		if len(fmtSpec) == 4 {
@@ -309,7 +309,7 @@ func inhaleFile(filename string) fakeStream {
 			return fakeStream{nil, -1}
 		}
 		defer fd.Close()
-		file, err := gzip.NewInflater(fd)
+		file, err := gzip.NewReader(fd)
 		fileData, err = ioutil.ReadAll(file)
 	} else {
 		fileData, err = ioutil.ReadFile(filename)
@@ -372,7 +372,7 @@ func LoadEnergiesFromMdout(filename string) ([]float32, int) {
 // Call it every time you do another piece of the total.
 // It will only actually print something every few percent.
 func PrintPercentDone(done, total int, description string) {
-	percent := int(float(done) / float(total) * 100)
+	percent := int(float32(done) / float32(total) * 100)
 	if done%(total/20) == 0 || done == total {
 		desc := " " + description
 		fmt.Fprintf(os.Stderr, "%d%% done%s.\n", percent, desc)
@@ -495,7 +495,7 @@ func readLineFromOpenFile(fp *os.File) string {
 var coordsFreeList = make(chan []float32, 32)
 
 func ReleaseCoordsBuffer(coords []float32) {
-    _ = coordsFreeList <- coords
+    coordsFreeList <- coords
 }
 
 // Assumes file pointer is at the start of a frame
@@ -507,14 +507,14 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([
 	}
 	// fmt.Println("Lines per frame:", linesPerFrame);
 
-    var ok bool
-    var coords []float32
-	coords, ok = <-coordsFreeList
-	if (!ok) {
-	    fmt.Println("Allocating a new coords buffer.")
-	    coords = make([]float32, numAtoms*3)
-    }
-	
+    // var ok bool
+    var coords = make([]float32, numAtoms*3)
+    coords = <-coordsFreeList
+	// if (!ok) {
+	//     fmt.Println("Allocating a new coords buffer.")
+	//     coords = make([]float32, numAtoms*3)
+    // }
+	// 
 	ci := 0
 
 	for i := 0; i < linesPerFrame; i++ {
@@ -553,7 +553,7 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([
 // from the amount of memory *you* allocated. Likely because the Go memory manager
 // allocates from its own pool of memory which it grows and shrinks speculatively.
 func Status() string {
-	return fmt.Sprintf("Allocated memory: %.1f MB", float(runtime.MemStats.Alloc)/1048576)
+	return fmt.Sprintf("Allocated memory: %.1f MB", float32(runtime.MemStats.Alloc)/1048576)
 }
 
 // Encapsulates the indices of a residue interaction pair

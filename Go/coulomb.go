@@ -215,7 +215,7 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 	
 		// Put this decomp buffer back on the free list, or drop it on the floor for the GC
 		// to collect if there's no room (the assignment makes it nonblocking and don't care if fail)
-		_ = decompFreeList <- decomp
+		decompFreeList <- decomp
 	}
 	fmt.Println("decompProcessor finished. I wrote to", filename)
 	termCh <- 0 // Tell caller we're done
@@ -233,7 +233,7 @@ func openTrj(filename string) (*bufio.Reader, os.Error) {
 	//trjOrig := bufio.NewReader(trjFp)
 	var trj *bufio.Reader
 	if strings.HasSuffix(filename, ".gz") {
-	    inflater, err := gzip.NewInflater(trjFp)
+	    inflater, err := gzip.NewReader(trjFp)
 	    if err != nil {
 	        fmt.Println("Not actually a gzip file: ", filename, err)
 	        return nil, err
@@ -262,7 +262,7 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	request.BondType = bondType
 	request.ResidueMap = residueMap
 	var ok bool
-	request.Decomp, ok = <-decompFreeList
+	request.Decomp = <-decompFreeList
 	if (!ok) {
 	    fmt.Println("Allocating a new decomposition matrix buffer.")
         request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    

@@ -206,7 +206,7 @@ func numFramesInFile(filename string, numResidues int) int {
 		return -1
 	}
 	// fmt.Println("Size is", stat.Size);
-	return int(stat.Size / uint64(numResidues*numResidues*4))
+	return int(stat.Size / int64(numResidues*numResidues*4))
 }
 
 // Calculates correlation matrix (numPairs*numPairs)
