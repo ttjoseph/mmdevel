@@ -146,7 +146,7 @@ func LoadSystem(prmtopFilename string) *System {
 
 		// FORMAT line
 		s, err = prmtop.ReadString('\n')
-		fmtSpec := formatRe.FindAllString(s, 0)
+		fmtSpec := formatRe.FindStringSubmatch(s)
 
 		var numThings, thingLen int
 		if len(fmtSpec) == 4 {
@@ -157,6 +157,7 @@ func LoadSystem(prmtopFilename string) *System {
 			mol.Formats[blockName] = fmtSpec
 		} else {
 			fmt.Println("Couldn't understand format specifier - bad prmtop")
+			fmt.Println(fmtSpec, s)
 			return nil
 		}
 
