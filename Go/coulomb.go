@@ -62,8 +62,10 @@ func main() {
 	}
 	fmt.Println("Number of atoms:", mol.NumAtoms())
 	fmt.Println("Number of residues:", mol.NumResidues())
+	hasBox := false
 	fmt.Print("Periodic box in prmtop: ")
 	if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
+	    hasBox = true
 		fmt.Println("Yes")
 	} else {
 		fmt.Println("No")
@@ -100,20 +102,25 @@ func main() {
 		 	outFile, _ := os.Open("solute.top.tom", os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
         	defer outFile.Close()
         	
-        	WriteInt32(outFile, mol.NumAtoms());
-        	WriteInt32(outFile, mol.NumResidues());
-        	WriteInt32(outFile, params.Ntypes);
-        	WriteInt32Array(outFile, params.NBIndices);
-        	WriteInt32Array(outFile, params.AtomTypeIndices);
-        	WriteFloat32Array(outFile, params.LJ12);
-        	WriteFloat32Array(outFile, params.LJ6);
-        	WriteFloat32Array(outFile, params.Charges);
-        	WriteInt8Array(outFile, request.BondType);
-        	WriteInt32Array(outFile, request.ResidueMap);
-        	
-        	fmt.Println("Wrote preprocessed prmtop data. Done!");
-        	os.Exit(0);
-	    }
+        	WriteInt32(outFile, mol.NumAtoms())
+        	WriteInt32(outFile, mol.NumResidues())
+        	WriteInt32(outFile, params.Ntypes)
+        	WriteInt32Array(outFile, params.NBIndices)
+        	WriteInt32Array(outFile, params.AtomTypeIndices)
+        	WriteFloat32Array(outFile, params.LJ12)
+        	WriteFloat32Array(outFile, params.LJ6)
+        	WriteFloat32Array(outFile, params.Charges)
+        	WriteInt8Array(outFile, request.BondType)
+        	WriteInt32Array(outFile, request.ResidueMap)
+		if hasBox {
+			WriteInt32(outFile, 1)
+		} else {
+			WriteInt32(outFile, 0)
+		}   
+
+		fmt.Println("Wrote preprocessed prmtop data. Done!");
+		os.Exit(0);
+		}
 
 		fmt.Println("Electrostatic energy:", Electro(&request), "kcal/mol")
 		fmt.Println("van der Waals energy:", LennardJones(&request), "kcal/mol")
@@ -135,10 +142,6 @@ func main() {
 		fmt.Println("Writing residue decomposition matrices to", outFilename)
 		go decompProcessor(outFilename, mol.NumResidues(), decompCh, ch)
 		numAtoms := mol.NumAtoms()
-		hasBox := false
-		if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
-			hasBox = true
-		}
 
         fileId := 0
 	    trj, err := openTrj(trjFilenames[fileId])
