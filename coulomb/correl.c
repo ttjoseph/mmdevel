@@ -159,7 +159,7 @@ int main (int argc, char *argv[])
     
     int res_i, res_j, numPairs = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
-      for(res_j = 0; res_j < res_i; res_j++) {
+      for(res_j = 0; res_j < (res_i-1); res_j++) {
         if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= CUTOFF)
           numPairs++;
       }
@@ -167,7 +167,7 @@ int main (int argc, char *argv[])
     
     int *pairsList = malloc(2*numPairs*sizeof(int)), ptr = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
-      for(res_j = 0; res_j < res_i; res_j++) {
+      for(res_j = 0; res_j < (res_i-1); res_j++) {
         if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= CUTOFF) {
           pairsList[ptr] = res_i;
           pairsList[ptr+1] = res_j;
