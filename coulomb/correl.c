@@ -6,7 +6,8 @@
 #include <math.h>
 #include <mpi.h>
 
-#define CUTOFF 10.0
+#define ENERGY_CUTOFF 1.0
+#define CORREL_CUTOFF 0.4
 #define FRAME_BATCH_SIZE 500
 
 int Rank, NumNodes;
@@ -20,10 +21,10 @@ void bomb(char *msg) {
 
 // Synchronizes data by broadcasting it from the rank 0 node
 void broadcastIntArray(int **buf, int *size) {
-  MPI_Bcast(size, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(Rank > 0) // If we're not the master node, we need to allocate this buffer
     *buf = malloc(sizeof(int) * *size);
-  MPI_Bcast(*buf, *size, MPI_INTEGER, 0, MPI_COMM_WORLD);
+  MPI_Bcast(*buf, *size, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
 // Returns the number of frames in a file with numResidues*numResidues*sizeof(float) bytes per frame
@@ -103,10 +104,10 @@ int main (int argc, char *argv[])
     }
     
     Nresidues = atoi(argv[1]);
-    printf("You said there are %d residues. I hope that's correct.\n", Nresidues);
-    if(MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+    printf("You said there are %d residues. I hope that's correct.\nUsing energy cutoff of %.1f kcal/mol and correlation cutoff of %.1f.\n", Nresidues, ENERGY_CUTOFF, CORREL_CUTOFF);
+    if(MPI_Bcast(&Nresidues, 1, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting number of residues");
-    
+      
     // Calculate average energies
     // Create and zero out the average energies matrix
     double *averageEnergies = malloc(Nresidues*Nresidues*sizeof(double));
@@ -160,7 +161,7 @@ int main (int argc, char *argv[])
     int res_i, res_j, numPairs = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
       for(res_j = 0; res_j < (res_i-1); res_j++) {
-        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= CUTOFF)
+        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF)
           numPairs++;
       }
     }
@@ -168,7 +169,7 @@ int main (int argc, char *argv[])
     int *pairsList = malloc(2*numPairs*sizeof(int)), ptr = 0;
     for(res_i = 0; res_i < Nresidues; res_i++) {
       for(res_j = 0; res_j < (res_i-1); res_j++) {
-        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= CUTOFF) {
+        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF) {
           pairsList[ptr] = res_i;
           pairsList[ptr+1] = res_j;
           ptr+=2;
@@ -176,8 +177,7 @@ int main (int argc, char *argv[])
       }
     }
     
-    dumpIntMatrixToFile("pairs.txt", pairsList, numPairs, 2);
-    printf("Found %d pairs above cutoff of %.1f kcal/mol; dumped to pairs.txt.\n", numPairs, CUTOFF);
+    printf("Found %d pairs above cutoff of %.1f kcal/mol.\n", numPairs, ENERGY_CUTOFF);
     
     // OK! Now we have the pairs list. Now to calculate the correlation matrix (numPairs*numPairs).
     
@@ -200,7 +200,7 @@ int main (int argc, char *argv[])
     }
     // Make sure rounding error doesn't leave a row uncalculated
     rowsToCalculate[NumNodes] = numPairs;
-    if(MPI_Bcast(rowsToCalculate, NumNodes, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+    if(MPI_Bcast(rowsToCalculate, NumNodes, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting rowsToCalculate");
     
     int fileIdx, keepGoing;
@@ -238,11 +238,11 @@ int main (int argc, char *argv[])
         // There are a zillion MPI calls below but they are executed pretty infrequently, so I am
         // not bothering with coalescing them.
         keepGoing = 1; // Keep on truckin' - we've got frames to process
-        if(MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+        if(MPI_Bcast(&keepGoing, 1, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
           bomb("Broadcasting keepGoing");
         // Broadcast this pairs-energies matrix. First, how many frames: matrix width.
         // Matrix height is numPairs. Then, the data itself.
-        if(MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+        if(MPI_Bcast(&thisBlockSize, 1, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
           bomb("Broadcasting thisBlockSize");
         if(MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
           bomb("Broadcasting pairsEnergies");
@@ -254,7 +254,7 @@ int main (int argc, char *argv[])
 
     // Done with all files
     keepGoing = 0;
-    if(MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
+    if(MPI_Bcast(&keepGoing, 1, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting stop signal");
     // Free up some memory
     free(pairsEnergies);
@@ -287,16 +287,56 @@ int main (int argc, char *argv[])
     
     // Now that we've reassembled num and denom, divide them to give final correlation matrix.
     // This can be floats because we're just going to dump it to a file, and we want to save memory.
-    float *correl = malloc(numPairs*numPairs*sizeof(float));
+    float *correl = (float*) malloc(numPairs*numPairs*sizeof(float));
     for(i = 0; i < (numPairs*numPairs); i++)
       correl[i] = (float)(num[i]/denom[i]);
       
-    dumpFloatMatrixToFile("correl.txt", correl, numPairs, numPairs);
-    printf("Dumped pairs correlation matrix to correl.txt.\n");
+    // Apply correlation cutoff as in Kong and Karplus.
+    // All correlation values that do not meet the cutoff are taken to be zero.
+    // Rows/columns that are entirely zero are discarded from the matrix, and the corresponding
+    // pairs from pairsList.
+    int *savedPairIDs = malloc(numPairs*sizeof(int)), prunedCount = 0;
+    for(int ij = 0; ij < numPairs; ij++) {
+      for(int kl = 0; kl < numPairs; kl++) {
+        // If there is a correl value above the cutoff, this row/column is good so
+        // save this index and move on to the next row immediately
+        if(ij != kl && fabs(correl[numPairs*ij+kl]) > CORREL_CUTOFF) {
+          savedPairIDs[prunedCount++] = ij;
+          break;
+        }
+      }
+    }
+    
+    // Extract the relevant pairs
+    int *prunedPairsList = (int*) malloc(prunedCount*2*sizeof(int));
+    for(int i = 0; i < prunedCount; i++) {
+      prunedPairsList[i*2] = pairsList[savedPairIDs[i]*2];
+      prunedPairsList[i*2+1] = pairsList[savedPairIDs[i]*2+1];
+    }
+    
+    // Extract the relevant correlation values and make a new matrix
+    float *prunedCorrel = malloc(prunedCount*prunedCount*sizeof(float));
+    for(int ij = 0; ij < prunedCount; ij++) {
+      for(int kl = 0; kl < prunedCount; kl++) {
+        // savedPairIDs contains the indices into the original correl matrix
+        int orig_ij = savedPairIDs[ij], orig_kl = savedPairIDs[kl];
+        prunedCorrel[prunedCount*ij+kl] = correl[numPairs*orig_ij+orig_kl];
+      }
+    }
+      
+    dumpIntMatrixToFile("orig-pairs.txt", pairsList, numPairs, 2);
+    printf("Dumped unpruned list of residue pairs to orig-pairs.txt.\n");
+    dumpFloatMatrixToFile("orig-correl.txt", correl, numPairs, numPairs);
+    printf("Dumped unpruned pairs correlation matrix to orig-correl.txt.\n");
+
+    dumpIntMatrixToFile("pairs.txt", prunedPairsList, prunedCount, 2);
+    printf("Dumped pruned list of residue pairs to pairs.txt (those that met the correlation cutoff of %.1f).\n", CORREL_CUTOFF);
+    dumpFloatMatrixToFile("correl.txt", prunedCorrel, prunedCount, prunedCount);
+    printf("Dumped pruned pairs correlation matrix to correl.txt.\n");
     
   } else {
     // We are a worker node. Our mission is to serve.
-    MPI_Bcast(&Nresidues, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&Nresidues, 1, MPI_INT, 0, MPI_COMM_WORLD);
     double *averageEnergies = malloc(Nresidues*Nresidues*sizeof(double));
     MPI_Bcast(averageEnergies, Nresidues*Nresidues, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -310,7 +350,7 @@ int main (int argc, char *argv[])
 
     // Receive the range of rows to calculate (ij_a, ij_b).
     int *rowsToCalculate = malloc(sizeof(int) * NumNodes);
-    MPI_Bcast(rowsToCalculate, NumNodes, MPI_INTEGER, 0, MPI_COMM_WORLD);
+    MPI_Bcast(rowsToCalculate, NumNodes, MPI_INT, 0, MPI_COMM_WORLD);
     int ij_a = rowsToCalculate[Rank-1], ij_b = rowsToCalculate[Rank];
     // Easy way - this wastes space - see below
     int localSize = (ij_b-ij_a) * ij_b;
@@ -323,12 +363,12 @@ int main (int argc, char *argv[])
     // Repeat:
     for(;;) {
       // Should we keep going?
-      MPI_Bcast(&keepGoing, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+      MPI_Bcast(&keepGoing, 1, MPI_INT, 0, MPI_COMM_WORLD);
       if(!keepGoing) break;
 
       // Broadcast the pairs-energies matrix from master.
       int thisBlockSize;
-      MPI_Bcast(&thisBlockSize, 1, MPI_INTEGER, 0, MPI_COMM_WORLD);
+      MPI_Bcast(&thisBlockSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
       MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD);
     
       // Actually do the calculation.
