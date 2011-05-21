@@ -1,5 +1,5 @@
 CC=mpicc
-CFLAGS=-O2 -g -Wall
+CFLAGS=-O2 -g -Wall -std=c99
 LDFLAGS=-lz -lm -lpthread
 
 all : coulomb correl projection
