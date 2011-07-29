@@ -7,6 +7,7 @@ import sys
 import re
 import os
 import subprocess
+import string
 
 class Error(Exception):
     pass
@@ -119,9 +120,9 @@ class AmberSystem:
         
         fp = open(filename, "r")
         fp.readline() # Eat header line
-        
+	
         coords_left = self.blocks['POINTERS'][AmberSystem.NATOM] * 3
-        validate(coords_left == int(fp.readline()) * 3, \
+        validate(coords_left == int(string.split(fp.readline())[0]) * 3, \
             "Number of atoms %d in %s differs from that specified in prmtop" \
                 % (coords_left, filename))
         
