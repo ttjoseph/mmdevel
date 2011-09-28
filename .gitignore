@@ -1,3 +1,6 @@
+*.o
+coulomb
+correl
 *.6
 *.a
 ._*
