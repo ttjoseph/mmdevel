@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"container/vector"
 	"compress/gzip"
 	"runtime"
 )
@@ -54,20 +53,20 @@ const (
 )
 
 // Converts a Vector of strings to an array of float32.
-func VectorAsFloat32Array(v *vector.Vector) []float32 {
-	data := make([]float32, v.Len())
-	for i := 0; i < v.Len(); i++ {
-		x := strings.TrimSpace(v.At(i).(string))
+func VectorAsFloat32Array(v []string) []float32 {
+	data := make([]float32, len(v))
+	for i := 0; i < len(v); i++ {
+		x := strings.TrimSpace(v[i])
 		data[i] = what.Atof32(x)
 	}
 	return data
 }
 
 // Converts a Vector of strings to an array of int.
-func VectorAsIntArray(v *vector.Vector) []int {
-	data := make([]int, v.Len())
-	for i := 0; i < v.Len(); i++ {
-		x := strings.TrimSpace(v.At(i).(string))
+func VectorAsIntArray(v []string) []int {
+	data := make([]int, len(v))
+	for i := 0; i < len(v); i++ {
+		x := strings.TrimSpace(v[i])
 		data[i] = what.Atoi(x)
 	}
 	return data
@@ -85,28 +84,28 @@ func StringArrayAsFloat32Array(v []string) []float32 {
 
 // Encapsulates an AMBER prmtop/inpcrd
 type System struct {
-	Blocks  map[string]*vector.Vector
+	Blocks  map[string][]string
 	Formats map[string][]string
 	Coords  map[int][]float32
 }
 
 // Gets an int at specified offset in specified block.
 func (mol *System) GetInt(blockName string, index int) int {
-	s := mol.Blocks[blockName].At(index).(string)
+	s := mol.Blocks[blockName][index]
 	val := what.Atoi(s)
 	return val
 }
 
 // Returns the number of atoms the prmtop expects there to be
 func (mol *System) NumAtoms() int {
-	x := mol.Blocks["POINTERS"].At(0).(string)
+	x := mol.Blocks["POINTERS"][0]
 	val := what.Atoi(strings.TrimSpace(x))
 	return val
 }
 
 // Returns the number of residues the prmtop expects there to be
 func (mol *System) NumResidues() int {
-	x := mol.Blocks["POINTERS"].At(11).(string)
+	x := mol.Blocks["POINTERS"][11]
 	val := what.Atoi(strings.TrimSpace(x))
 	return val
 }
@@ -114,10 +113,10 @@ func (mol *System) NumResidues() int {
 // Loads an AMBER system - both a prmtop and inpcrd.
 func LoadSystem(prmtopFilename string) *System {
 	var mol System
-	mol.Blocks = make(map[string]*vector.Vector)
+	mol.Blocks = make(map[string][]string)
 	mol.Formats = make(map[string][]string)
 
-	prmtopFile, err := os.Open(prmtopFilename, os.O_RDONLY, 0)
+	prmtopFile, err := os.Open(prmtopFilename)
 	if err != nil {
 		fmt.Println("Error opening prmtop:", err)
 		return nil
@@ -142,7 +141,7 @@ func LoadSystem(prmtopFilename string) *System {
 			break
 		}
 		blockName := strings.TrimSpace(s[6 : len(s)-1])
-		mol.Blocks[blockName] = new(vector.Vector)
+		mol.Blocks[blockName] = make([]string, 0)
 
 		// FORMAT line
 		s, err = prmtop.ReadString('\n')
@@ -174,7 +173,7 @@ func LoadSystem(prmtopFilename string) *System {
 				n = numThings
 			}
 			for i := 0; i < (n * thingLen); i += thingLen {
-				mol.Blocks[blockName].Push(s[i : i+thingLen])
+				mol.Blocks[blockName] = append(mol.Blocks[blockName], s[i : i+thingLen])
 			}
 		}
 	}
@@ -183,7 +182,7 @@ func LoadSystem(prmtopFilename string) *System {
 
 // Load an inpcrd file into this system
 func (mol *System) LoadRst(inpcrdFilename string) {
-	inpcrdFile, err := os.Open(inpcrdFilename, os.O_RDONLY, 0)
+	inpcrdFile, err := os.Open(inpcrdFilename)
 	if err != nil {
 		fmt.Println("Error opening inpcrd:", err)
 		return
@@ -304,7 +303,7 @@ func inhaleFile(filename string) fakeStream {
 	var err os.Error
 	// Verbose!
 	if strings.HasSuffix(filename, ".gz") {
-		fd, err := os.Open(filename, os.O_RDONLY, 0)
+		fd, err := os.Open(filename)
 		if err != nil {
 			fmt.Println("Error opening", filename, err)
 			return fakeStream{nil, -1}
@@ -386,13 +385,13 @@ func LoadTextAsFloat32Matrix(filename string) ([]float32, int, int) {
 	contents := inhaleFile(filename)
 	//nukeExtraSpaces := regexp.MustCompile("[ ]+");
 	numCols := -1
-	var rows vector.Vector
+	rows := make([][]string, 0)
 
 	for contents.ptr != -1 {
 		s := trimSpace(contents.readString())
 		// Go's regexp is incredibly slow
 		//s = nukeExtraSpaces.ReplaceAllString(s, " ");
-		thisRow := strings.Split(s, " ", 0)
+		thisRow := strings.Split(s, " ")
 		// The first non-empty row defines the number of columns for the other rows
 		if numCols == -1 {
 			numCols = len(thisRow)
@@ -400,17 +399,18 @@ func LoadTextAsFloat32Matrix(filename string) ([]float32, int, int) {
 		// fmt.Fprintf(os.Stderr, "%d: %d columns in this row\n", rows.Len(), len(thisRow));
 		// Except for empty lines, give up if the number of columns varies
 		if len(thisRow) != numCols {
-			fmt.Fprintf(os.Stderr, "Loaded %d rows and %d columns. %s\n", rows.Len(), numCols, Status())
+			fmt.Fprintf(os.Stderr, "Loaded %d rows and %d columns. %s\n", len(rows), numCols, Status())
 			break
 		}
-		rows.Push(thisRow)
+		// rows.Push(thisRow)
+		rows = append(rows, thisRow)
 	}
 	// Now we have a vector of []string
-	numRows := rows.Len()
+	numRows := len(rows)
 	data := make([]float32, numRows*numCols)
-	for i := 0; i < rows.Len(); i++ {
+	for i := 0; i < len(rows); i++ {
 		// fmt.Fprintf(os.Stderr, "row %d\n", i);
-		vals := rows.At(i).([]string)
+		vals := rows[i]
 		for j := 0; j < numCols; j++ {
 			data[i*numCols+j] = float32(Strtod(vals[j]))
 		}
@@ -422,7 +422,7 @@ func LoadTextAsFloat32Matrix(filename string) ([]float32, int, int) {
 // Dumps a float32 matrix (stored as a 1D array, by rows) to a text file. The number of rows
 // is inferred but you do have to say how many columns it has.
 func DumpFloat32MatrixAsText(data []float32, cols int, filename string) {
-	fp, err := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+	fp, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening %f\n", filename)
 		return
@@ -441,7 +441,7 @@ func DumpFloat32MatrixAsText(data []float32, cols int, filename string) {
 // Dumps a float64 matrix (stored as a 1D array, by rows) to a text file. The number of rows
 // is inferred but you do have to say how many columns it has.
 func DumpFloat64MatrixAsText(data []float64, cols int, filename string) {
-	fp, err := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+	fp, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening %f\n", filename)
 		return
@@ -458,15 +458,15 @@ func DumpFloat64MatrixAsText(data []float64, cols int, filename string) {
 }
 
 // Dumps a Vector of Pairs to a text file, one pair per line.
-func DumpPairVectorAsText(v *vector.Vector, filename string) {
-	fp, err := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+func DumpPairVectorAsText(v []Pair, filename string) {
+	fp, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening %f\n", filename)
 		return
 	}
 	defer fp.Close()
-	for i := 0; i < v.Len(); i++ {
-		p := v.At(i).(Pair)
+	for i := 0; i < len(v); i++ {
+		p := v[i]
 		fmt.Fprintf(fp, "%d %d\n", p.Row, p.Col)
 	}
 }

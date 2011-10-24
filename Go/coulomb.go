@@ -99,7 +99,7 @@ func main() {
 		
 		// Dump the preprocessed info to a file so a C version of this program can easily load and parse it
 		if savePreprocessed {
-		 	outFile, _ := os.Open("solute.top.tom", os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+		 	outFile, _ := os.OpenFile("solute.top.tom", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
         	defer outFile.Close()
         	
         	WriteInt32(outFile, mol.NumAtoms())
@@ -199,7 +199,7 @@ func main() {
 // That should be OK for the correlation analysis though.
 func decompProcessor(filename string, numResidues int, ch chan []float64, termCh chan int) {
 	// Output file
-	outFile, _ := os.Open(filename, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0644)
+	outFile, _ := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer outFile.Close()
 	tmp := make([]byte, numResidues*numResidues*4) // for converting to bytes
 	for {
@@ -226,7 +226,7 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 
 func openTrj(filename string) (*bufio.Reader, os.Error) {
     // Or, do the trajectory.
-	trjFp, err := os.Open(filename, os.O_RDONLY, 0)
+	trjFp, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error opening", filename, err)
 		return nil, err
