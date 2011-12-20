@@ -15,7 +15,7 @@ if size(rc1) ~= size(rc2)
     error('Sizes of rescorrel matrices must be the same.')
 end
 
-percentile = 0.9;
+percentile = 0.926;
 
 rc1v = sort(rc1(:));
 rc2v = sort(rc2(:));
