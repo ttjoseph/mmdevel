@@ -17,11 +17,11 @@ dg6c = fm - g6c;
 dt7g = fm - t7g;
 
 % Use sigma units
-dg3t = dg3t / std(dg3t(:));
-da4c = da4c / std(da4c(:));
-da4t = da4t / std(da4t(:));
-dg6c = dg6c / std(dg6c(:));
-dt7g = dt7g / std(dt7g(:));
+dg3t = (dg3t - mean(dg3t(:))) / std(dg3t(:));
+da4c = (da4c - mean(da4c(:))) / std(da4c(:));
+da4t = (da4t - mean(da4t(:))) / std(da4t(:));
+dg6c = (dg6c - mean(dg6c(:))) / std(dg6c(:));
+dt7g = (dt7g - mean(dt7g(:))) / std(dt7g(:));
 
 % Descriptive statistics
 dsum = (dg3t + da4c + da4t + dg6c + dt7g);
