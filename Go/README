@@ -1,0 +1,2 @@
+Don't forget to set the environment variable GOPATH=mmdevel/Go
+(where 'mmdevel' is the real path to your mmdevel directory)
