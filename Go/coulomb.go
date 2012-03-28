@@ -224,7 +224,7 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 	termCh <- 0 // Tell caller we're done
 }
 
-func openTrj(filename string) (*bufio.Reader, os.Error) {
+func openTrj(filename string) (*bufio.Reader, error) {
     // Or, do the trajectory.
 	trjFp, err := os.Open(filename)
 	if err != nil {
