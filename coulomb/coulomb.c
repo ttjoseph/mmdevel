@@ -14,6 +14,8 @@
 #define ANGLE 2
 #define DIHEDRAL 4
 
+#include "ttago_resnames.inc"
+
 // Loads stuff from disk
 // Assumes the array is in host endianness!
 int* loadIntArray(FILE *fp, int *size) {
@@ -195,6 +197,21 @@ int checksum(char *data, int len) {
   return foo;
 }
 
+void findInterestingInteractions(double *eelMatrix, double *vdwMatrix) {
+    for(int i=24; i < Nresidues; i++) {
+        for(int j=24; j < i; j++) {
+            double eel = eelMatrix[i*Nresidues+j];
+            double vdw = vdwMatrix[i*Nresidues+j];
+            // 24 nucleic residues, residue numbering for human consumption starts at 1
+            // Output in CSV format
+            if(fabs(eel) > 0.5 && fabs(eel+vdw) < 0.1) {
+                printf("%s%d, %s%d, %.3f, %.3f, %.3f\n", 
+                    XXX_ResNames[i-24], i-24+1, XXX_ResNames[j-24], j-24+1, eel, vdw, eel+vdw);
+            }
+        }
+    }
+}
+
 int main (int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
@@ -372,6 +389,8 @@ int main (int argc, char *argv[]) {
     // Allocate request buffer
     float *requestBuf = (float*) malloc(sizeof(float) * (Natoms*3+1));
     double *resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
+    double *eel_resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
+    double *vdw_resultBuf = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
     
     for(;;) {
       // Receive request.
@@ -386,8 +405,14 @@ int main (int argc, char *argv[]) {
       float *coords = requestBuf+1;
 
       memset(resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
-      double eel = Electro(coords, resultBuf);
-      double vdw = LennardJones(coords, resultBuf);
+      memset(eel_resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
+      memset(vdw_resultBuf, 0, sizeof(double) * (Nresidues*Nresidues));
+      double eel = Electro(coords, eel_resultBuf);
+      double vdw = LennardJones(coords, vdw_resultBuf);
+      findInterestingInteractions(eel_resultBuf, vdw_resultBuf);
+
+      // Add electrostatic and van der Waals energies
+      for(int i=0; i<(Nresidues*Nresidues); i++) resultBuf[i] = eel_resultBuf[i]+vdw_resultBuf[i];
       
       printf("[%d] Electro: %f vdW: %f Total: %f\n", Rank, eel, vdw, eel+vdw);
       if(isnan(eel+vdw) || isinf(eel+vdw)) {
