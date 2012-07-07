@@ -3,38 +3,38 @@
 package main
 
 import (
-	"encoding/binary"
-	"math"
-	"fmt"
-	"flag"
-	"os"
 	"amber"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"math"
+	"os"
 )
 
 func WriteInt32(file *os.File, d int) {
-    tmp := make([]uint8, 4)
-    binary.LittleEndian.PutUint32(tmp[0:4], uint32(d))
-    file.Write(tmp)
+	tmp := make([]uint8, 4)
+	binary.LittleEndian.PutUint32(tmp[0:4], uint32(d))
+	file.Write(tmp)
 }
 
 func WriteInt32Array(file *os.File, d []int) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
-    tmp := make([]uint8, len(d)*4)
-	for j, n := range (d) {
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
+	tmp := make([]uint8, len(d)*4)
+	for j, n := range d {
 		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], uint32(n))
 	}
 	file.Write(tmp)
 }
 
 func WriteInt8Array(file *os.File, d []uint8) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
 	file.Write(d)
 }
 
 func WriteFloat32Array(file *os.File, d []float32) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
-    tmp := make([]uint8, len(d)*4)
-	for j, n := range (d) {
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
+	tmp := make([]uint8, len(d)*4)
+	for j, n := range d {
 		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 	}
 	file.Write(tmp)
@@ -43,11 +43,11 @@ func WriteFloat32Array(file *os.File, d []float32) {
 func main() {
 	var prmtopFilename, rstFilename, outFilename string
 	var stride int
-	var savePreprocessed bool;
-	
+	var savePreprocessed bool
+
 	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename (required)")
 	flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename")
-    flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
+	flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
 	flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename")
 	flag.BoolVar(&savePreprocessed, "e", false, "Save prmtop preprocessed output (use with -c)")
 	flag.Parse()
@@ -61,7 +61,7 @@ func main() {
 	hasBox := false
 	fmt.Print("Periodic box in prmtop: ")
 	if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
-	    hasBox = true
+		hasBox = true
 		fmt.Println("Yes")
 	} else {
 		fmt.Println("No")
@@ -85,11 +85,11 @@ func main() {
 	request.BondType = makeBondTypeTable(mol)
 	request.ResidueMap = makeResidueMap(mol)
 	request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())
-	
+
 	// Dump the preprocessed info to a file so a C version of this program can easily load and parse it
- 	outFile, _ := os.OpenFile("solute.top.tom", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-    	defer outFile.Close()
-    	
+	outFile, _ := os.OpenFile("solute.top.tom", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer outFile.Close()
+
 	WriteInt32(outFile, mol.NumAtoms())
 	WriteInt32(outFile, mol.NumResidues())
 	WriteInt32(outFile, params.Ntypes)
@@ -105,9 +105,9 @@ func main() {
 		WriteInt32(outFile, 1)
 	} else {
 		WriteInt32(outFile, 0)
-	}   
-	fmt.Println("Wrote preprocessed prmtop data. Done!");
-	os.Exit(0);
+	}
+	fmt.Println("Wrote preprocessed prmtop data. Done!")
+	os.Exit(0)
 }
 
 // Converts the RESIDUE_POINTER block into an array, index by atom, that
@@ -138,7 +138,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	bondType := make([]uint8, numAtoms*numAtoms)
 
 	bondsBlocks := []string{"BONDS_INC_HYDROGEN", "BONDS_WITHOUT_HYDROGEN"}
-	for _, blockName := range (bondsBlocks) {
+	for _, blockName := range bondsBlocks {
 		bonds := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j indexintostuff
 		// These are actually coordinate array indices, not atom indices
@@ -150,7 +150,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	}
 
 	angleBlocks := []string{"ANGLES_WITHOUT_HYDROGEN", "ANGLES_INC_HYDROGEN"}
-	for _, blockName := range (angleBlocks) {
+	for _, blockName := range angleBlocks {
 		angles := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j atom_k indexintostuff
 		for i := 0; i < len(angles); i += 4 {
@@ -161,7 +161,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	}
 
 	dihedBlocks := []string{"DIHEDRALS_INC_HYDROGEN", "DIHEDRALS_WITHOUT_HYDROGEN"}
-	for _, blockName := range (dihedBlocks) {
+	for _, blockName := range dihedBlocks {
 		diheds := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j atom_k atom_l indexintostuff
 		for i := 0; i < len(diheds); i += 5 {
