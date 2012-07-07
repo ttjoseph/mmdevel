@@ -1,2 +1,9 @@
 Don't forget to set the environment variable GOPATH=mmdevel/Go
 (where 'mmdevel' is the real path to your mmdevel directory)
+
+For example, to build prmtop_to_binary, which is probably what you want:
+
+export GOROOT=/path/to/go # This and the next command only needed
+export PATH=$GOROOT/bin
+export GOPATH=mmdevel/Go
+go build prmtop_to_binary.go
