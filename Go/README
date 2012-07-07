@@ -3,7 +3,12 @@ Don't forget to set the environment variable GOPATH=mmdevel/Go
 
 For example, to build prmtop_to_binary, which is probably what you want:
 
-export GOROOT=/path/to/go # This and the next command only needed
+# Make sure the installation of Go knows where it's located and is in our PATH
+export GOROOT=/path/to/go 
 export PATH=$GOROOT/bin
+
+# Specify the current Go project (make sure to specify the actual correct directory)
 export GOPATH=mmdevel/Go
+
+# Actually do the build, creating an executable called prmtop_to_binary
 go build prmtop_to_binary.go
