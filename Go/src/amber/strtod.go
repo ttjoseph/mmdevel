@@ -1,4 +1,5 @@
 package amber
+
 // This source code was downloaded from
 // http://www.jbox.dk/sanos/source/lib/strtod.c.html
 // and ported to Go by Tom Joseph <thomas.joseph@mssm.edu>

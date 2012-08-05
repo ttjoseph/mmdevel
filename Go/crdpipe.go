@@ -4,23 +4,25 @@
 // $ crdpipe -mdcrd foo.trj -frame 42 -numatoms 19401 > foo &
 // $ $AMBERHOME/bin/sander -p foo.top -c foo ...
 package main
+
 import (
-    "fmt"
-    "flag"
+	"flag"
+	"fmt"
+
 //    "amber"
 )
 
 func main() {
-    var trjFilename string;
-    var frame, numAtoms int;
-    var hasBox bool;
-    flag.StringVar(&trjFilename, "mdcrd", "mdcrd", "Trajectory filename");
-    flag.IntVar(&frame, "frame", 0, "Frame number you want (counting starts at 0)");
-    flag.IntVar(&numAtoms, "numatoms", 0, "Number of atoms per frame in the trajectory file");
-    flag.BoolVar(&hasBox, "hasbox", true, "Whether the trajectory records periodic boxes");
-    flag.Parse();
-    
-    fmt.Printf("I don't do anything!");
-    //coords := amber.GetNextFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
-    //amber.DumpCoordsAsRst(coords);
+	var trjFilename string
+	var frame, numAtoms int
+	var hasBox bool
+	flag.StringVar(&trjFilename, "mdcrd", "mdcrd", "Trajectory filename")
+	flag.IntVar(&frame, "frame", 0, "Frame number you want (counting starts at 0)")
+	flag.IntVar(&numAtoms, "numatoms", 0, "Number of atoms per frame in the trajectory file")
+	flag.BoolVar(&hasBox, "hasbox", true, "Whether the trajectory records periodic boxes")
+	flag.Parse()
+
+	fmt.Printf("I don't do anything!")
+	//coords := amber.GetNextFrameFromTrajectory(trjFilename, frame, numAtoms, hasBox);
+	//amber.DumpCoordsAsRst(coords);
 }

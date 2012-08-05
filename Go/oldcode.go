@@ -29,7 +29,6 @@ func main_oldCorrel() {
 	fmt.Println(status())
 }
 
-
 // Returns a numPairs*numPairs correlation matrix
 func CalcCorrelationsMonolithic(pairsEnergies, average []float32, pairs *vector.Vector, numResidues, numFrames int) []float32 {
 	correl := make([]float32, pairs.Len()*pairs.Len())
@@ -44,7 +43,6 @@ func CalcCorrelationsMonolithic(pairsEnergies, average []float32, pairs *vector.
 	}
 	return correl
 }
-
 
 // Goroutine to do part of the correlation calculation
 func calcCorrelationsSingleMonolithic(pairsEnergies, average []float32, pairs *vector.Vector, numResidues, numFrames, ij int, correl []float32, ch chan int) {
