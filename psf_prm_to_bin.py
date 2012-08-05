@@ -297,8 +297,7 @@ put_f32_array(out, charges[0:num_solute_atoms])
 # put_u8_array(out, bond_type)
 put_i32(out, num_solute_atoms * num_solute_atoms)
 for atom_i in xrange(num_solute_atoms):
-    for atom_j in xrange(num_solute_atoms):
-        out.write(struct.pack('B', bond_type[atom_i, atom_j]))
+    out.write(struct.pack('%dB' % num_solute_atoms, *[x for x in bond_type[atom_i, :]]))
 
 # Output ResidueMap: Array of atom indexes for residues
 put_i32_array(out, residue_map[0:num_solute_atoms])
