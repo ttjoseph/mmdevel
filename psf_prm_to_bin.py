@@ -4,6 +4,7 @@
 #
 # Usage: <psf> <prm>
 # Output is always in solute.top.tom
+import numpy
 import array
 import math
 import sys
@@ -165,7 +166,7 @@ while l[0:4] != "NONB":
     l = prm.readline().strip()
 if l[-1] == '-': l = prm.readline().strip() # Eat extra nonsense
 
-nuke_comment_re = re.compile('!.*$') # Regexp to get rid of comments
+nuke_comment_re = re.compile('!.*$') # Regexp to get_psf_block_headert rid of comments
 # We assume the HBOND line is the end of the nonbonded parameters
 prm_type, prm_epsilon, prm_rmin2 = [], [], []
 prm_eps14, prm_rmin214 = [], []
@@ -235,9 +236,10 @@ for i in xrange(num_atom_types):
             lj614[counter] = 2 * eps14 * rmin**6
         counter += 1
         
-# Matrix of bond types
+# Associative array of bond types
 print "Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576)
-bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
+# bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
+bond_type = numpy.zeros((num_solute_atoms, num_solute_atoms), 'u1')
 for i in xrange(0, len(bonds), 2):
     atom_i = bonds[i] - 1
     atom_j = bonds[i+1] - 1
@@ -247,25 +249,24 @@ for i in xrange(0, len(bonds), 2):
     
     if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
         continue
-    bond_type[num_solute_atoms*atom_i+atom_j] |= BOND
-    bond_type[num_solute_atoms*atom_j+atom_i] |= BOND
+    bond_type[atom_i, atom_j] |= BOND
+    bond_type[atom_j, atom_i] |= BOND
     
 for i in xrange(0, len(angles), 3):
     atom_i = angles[i] - 1
     atom_j = angles[i+2] - 1
     if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
         continue
-    bond_type[num_solute_atoms*atom_i+atom_j] |= ANGLE
-    bond_type[num_solute_atoms*atom_j+atom_i] |= ANGLE
+    bond_type[atom_i, atom_j] |= ANGLE
+    bond_type[atom_j, atom_i] |= ANGLE
 
 for i in xrange(0, len(dihedrals), 4):
     atom_i = dihedrals[i] - 1
     atom_j = dihedrals[i+3] - 1
     if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
         continue
-    # print "%d %d" % (atom_i, atom_j)
-    bond_type[num_solute_atoms*atom_i+atom_j] |= DIHEDRAL
-    bond_type[num_solute_atoms*atom_j+atom_i] |= DIHEDRAL
+    bond_type[atom_i, atom_j] |= DIHEDRAL
+    bond_type[atom_j, atom_i] |= DIHEDRAL
 
 #
 # Output format:
@@ -293,7 +294,11 @@ put_f32_array(out, lj6)
 put_f32_array(out, charges[0:num_solute_atoms])
 
 # Output BondType
-put_u8_array(out, bond_type)
+# put_u8_array(out, bond_type)
+put_i32(out, num_solute_atoms * num_solute_atoms)
+for atom_i in xrange(num_solute_atoms):
+    for atom_j in xrange(num_solute_atoms):
+        out.write(struct.pack('B', bond_type[atom_i, atom_j]))
 
 # Output ResidueMap: Array of atom indexes for residues
 put_i32_array(out, residue_map[0:num_solute_atoms])
