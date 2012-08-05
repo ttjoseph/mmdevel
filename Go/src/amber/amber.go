@@ -3,15 +3,15 @@
 package amber
 
 import (
-	"fmt"
-	"os"
 	"bufio"
+	"compress/gzip"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
-	"compress/gzip"
-	"runtime"
 )
 import (
 	"what"
@@ -173,7 +173,7 @@ func LoadSystem(prmtopFilename string) *System {
 				n = numThings
 			}
 			for i := 0; i < (n * thingLen); i += thingLen {
-				mol.Blocks[blockName] = append(mol.Blocks[blockName], s[i : i+thingLen])
+				mol.Blocks[blockName] = append(mol.Blocks[blockName], s[i:i+thingLen])
 			}
 		}
 	}
@@ -496,7 +496,7 @@ func readLineFromOpenFile(fp *os.File) string {
 var coordsFreeList = make(chan []float32, 32)
 
 func ReleaseCoordsBuffer(coords []float32) {
-    coordsFreeList <- coords
+	coordsFreeList <- coords
 }
 
 // Assumes file pointer is at the start of a frame
@@ -508,13 +508,13 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([
 	}
 	// fmt.Println("Lines per frame:", linesPerFrame);
 
-    // var ok bool
-    var coords = make([]float32, numAtoms*3)
-    coords = <-coordsFreeList
+	// var ok bool
+	var coords = make([]float32, numAtoms*3)
+	coords = <-coordsFreeList
 	// if (!ok) {
 	//     fmt.Println("Allocating a new coords buffer.")
 	//     coords = make([]float32, numAtoms*3)
-    // }
+	// }
 	// 
 	ci := 0
 
@@ -554,8 +554,8 @@ func GetNextFrameFromTrajectory(trj *bufio.Reader, numAtoms int, hasBox bool) ([
 // from the amount of memory *you* allocated. Likely because the Go memory manager
 // allocates from its own pool of memory which it grows and shrinks speculatively.
 func Status() string {
-  var m runtime.MemStats
-  runtime.ReadMemStats(&m)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
 	return fmt.Sprintf("Allocated memory: %.1f MB", float32(m.Alloc)/1048576)
 }
 

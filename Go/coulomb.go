@@ -3,41 +3,41 @@
 package main
 
 import (
-	"encoding/binary"
-	"compress/gzip"
-	"strings"
-	"math"
-	"fmt"
-	"flag"
-	"os"
-	"bufio"
 	"amber"
+	"bufio"
+	"compress/gzip"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"math"
+	"os"
+	"strings"
 )
 
 func WriteInt32(file *os.File, d int) {
-    tmp := make([]uint8, 4)
-    binary.LittleEndian.PutUint32(tmp[0:4], uint32(d))
-    file.Write(tmp)
+	tmp := make([]uint8, 4)
+	binary.LittleEndian.PutUint32(tmp[0:4], uint32(d))
+	file.Write(tmp)
 }
 
 func WriteInt32Array(file *os.File, d []int) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
-    tmp := make([]uint8, len(d)*4)
-	for j, n := range (d) {
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
+	tmp := make([]uint8, len(d)*4)
+	for j, n := range d {
 		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], uint32(n))
 	}
 	file.Write(tmp)
 }
 
 func WriteInt8Array(file *os.File, d []uint8) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
 	file.Write(d)
 }
 
 func WriteFloat32Array(file *os.File, d []float32) {
-    WriteInt32(file, len(d)); // Write size of array to file, then array itself
-    tmp := make([]uint8, len(d)*4)
-	for j, n := range (d) {
+	WriteInt32(file, len(d)) // Write size of array to file, then array itself
+	tmp := make([]uint8, len(d)*4)
+	for j, n := range d {
 		binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 	}
 	file.Write(tmp)
@@ -46,15 +46,15 @@ func WriteFloat32Array(file *os.File, d []float32) {
 func main() {
 	var prmtopFilename, rstFilename, outFilename string
 	var stride int
-	var savePreprocessed bool;
-	
+	var savePreprocessed bool
+
 	flag.StringVar(&prmtopFilename, "p", "prmtop", "Prmtop filename (required)")
 	flag.StringVar(&rstFilename, "c", "", "Inpcrd/rst filename")
-    flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
+	flag.IntVar(&stride, "s", 1, "Frame stride; 1 = don't skip any")
 	flag.StringVar(&outFilename, "o", "energies.bin", "Energy decomposition output filename")
 	flag.BoolVar(&savePreprocessed, "e", false, "Save prmtop preprocessed output (use with -c)")
 	flag.Parse()
-    trjFilenames := flag.Args()
+	trjFilenames := flag.Args()
 
 	mol := amber.LoadSystem(prmtopFilename)
 	if mol == nil {
@@ -65,7 +65,7 @@ func main() {
 	hasBox := false
 	fmt.Print("Periodic box in prmtop: ")
 	if mol.GetInt("POINTERS", amber.IFBOX) > 0 {
-	    hasBox = true
+		hasBox = true
 		fmt.Println("Yes")
 	} else {
 		fmt.Println("No")
@@ -84,10 +84,10 @@ func main() {
 	if rstFilename != "" || savePreprocessed {
 		var request EnergyCalcRequest
 		if rstFilename != "" {
-    		fmt.Printf("Calculating energies for single snapshot %s.\n", rstFilename)
-		    mol.LoadRst(rstFilename)
-    		request.Coords = mol.Coords[0]
-	    }
+			fmt.Printf("Calculating energies for single snapshot %s.\n", rstFilename)
+			mol.LoadRst(rstFilename)
+			request.Coords = mol.Coords[0]
+		}
 
 		request.NBParams = params
 		request.Molecule = mol
@@ -96,30 +96,30 @@ func main() {
 		request.BondType = makeBondTypeTable(mol)
 		request.ResidueMap = makeResidueMap(mol)
 		request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())
-		
+
 		// Dump the preprocessed info to a file so a C version of this program can easily load and parse it
 		if savePreprocessed {
-		 	outFile, _ := os.OpenFile("solute.top.tom", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-        	defer outFile.Close()
-        	
-        	WriteInt32(outFile, mol.NumAtoms())
-        	WriteInt32(outFile, mol.NumResidues())
-        	WriteInt32(outFile, params.Ntypes)
-        	WriteInt32Array(outFile, params.NBIndices)
-        	WriteInt32Array(outFile, params.AtomTypeIndices)
-        	WriteFloat32Array(outFile, params.LJ12)
-        	WriteFloat32Array(outFile, params.LJ6)
-        	WriteFloat32Array(outFile, params.Charges)
-        	WriteInt8Array(outFile, request.BondType)
-        	WriteInt32Array(outFile, request.ResidueMap)
-		if hasBox {
-			WriteInt32(outFile, 1)
-		} else {
-			WriteInt32(outFile, 0)
-		}   
+			outFile, _ := os.OpenFile("solute.top.tom", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			defer outFile.Close()
 
-		fmt.Println("Wrote preprocessed prmtop data. Done!");
-		os.Exit(0);
+			WriteInt32(outFile, mol.NumAtoms())
+			WriteInt32(outFile, mol.NumResidues())
+			WriteInt32(outFile, params.Ntypes)
+			WriteInt32Array(outFile, params.NBIndices)
+			WriteInt32Array(outFile, params.AtomTypeIndices)
+			WriteFloat32Array(outFile, params.LJ12)
+			WriteFloat32Array(outFile, params.LJ6)
+			WriteFloat32Array(outFile, params.Charges)
+			WriteInt8Array(outFile, request.BondType)
+			WriteInt32Array(outFile, request.ResidueMap)
+			if hasBox {
+				WriteInt32(outFile, 1)
+			} else {
+				WriteInt32(outFile, 0)
+			}
+
+			fmt.Println("Wrote preprocessed prmtop data. Done!")
+			os.Exit(0)
 		}
 
 		fmt.Println("Electrostatic energy:", Electro(&request), "kcal/mol")
@@ -127,9 +127,9 @@ func main() {
 		fmt.Println(amber.Status())
 
 		amber.DumpFloat64MatrixAsText(request.Decomp, mol.NumResidues(), "decomp.txt")
-		fmt.Println("Saved decomposition matrix to decomp.txt");
+		fmt.Println("Saved decomposition matrix to decomp.txt")
 	} else if len(trjFilenames) > 0 {
-    	fmt.Println("Frame stride:", stride)
+		fmt.Println("Frame stride:", stride)
 
 		// Lookup table for bond types so we don't calculate nonbonded energies
 		// between bonded atoms
@@ -143,50 +143,50 @@ func main() {
 		go decompProcessor(outFilename, mol.NumResidues(), decompCh, ch)
 		numAtoms := mol.NumAtoms()
 
-        fileId := 0
-	    trj, err := openTrj(trjFilenames[fileId])
-	    if err != nil {
-	        return
-        }
+		fileId := 0
+		trj, err := openTrj(trjFilenames[fileId])
+		if err != nil {
+			return
+		}
 
 		numKids := 0
 		frame := 0
 		strideCountdown := stride
-		
+
 		for {
-            // If there was an error reading the next frame, move on to the next trajectory file
+			// If there was an error reading the next frame, move on to the next trajectory file
 			coords, err := amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
-            if err != nil {
-                fileId++
-                if fileId >= len(trjFilenames) {
-                    break
-                }
-                trj, err = openTrj(trjFilenames[fileId])
-                if err != nil {
-                    fmt.Println("Error opening", trjFilenames[fileId])
-                    break
-                }
-    			coords, err = amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
-    			if err != nil {
-    			    fmt.Printf("Trajectory file %s doesn't have even one valid frame\n", trjFilenames[fileId])
-    			    break
-			    }
-            }
-            frame++
-            // Only actually process the frames indicated by stride
-            strideCountdown--
-            if strideCountdown == 0 {
-                strideCountdown = stride
-    			go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch)
-    			numKids++
-    		}
+			if err != nil {
+				fileId++
+				if fileId >= len(trjFilenames) {
+					break
+				}
+				trj, err = openTrj(trjFilenames[fileId])
+				if err != nil {
+					fmt.Println("Error opening", trjFilenames[fileId])
+					break
+				}
+				coords, err = amber.GetNextFrameFromTrajectory(trj, numAtoms, hasBox)
+				if err != nil {
+					fmt.Printf("Trajectory file %s doesn't have even one valid frame\n", trjFilenames[fileId])
+					break
+				}
+			}
+			frame++
+			// Only actually process the frames indicated by stride
+			strideCountdown--
+			if strideCountdown == 0 {
+				strideCountdown = stride
+				go calcSingleTrjFrame(mol, params, coords, frame, bondType, residueMap, decompCh, ch)
+				numKids++
+			}
 		}
 
-		if(false) {
-    		for i := 0; i < numKids; i++ {
-    			<-ch
-    		}
-    	}
+		if false {
+			for i := 0; i < numKids; i++ {
+				<-ch
+			}
+		}
 		decompCh <- nil
 		<-ch // Wait for decompProcessor to finish
 	}
@@ -211,11 +211,11 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 		// We could in theory do the correlation stuff now, but maybe we should
 		// just write the frames to disk.
 		// Dump to file. We have to explicitly convert to bytes. Yay.
-		for j, n := range (decomp) {
+		for j, n := range decomp {
 			binary.LittleEndian.PutUint32(tmp[j*4:j*4+4], math.Float32bits(float32(n)))
 		}
 		outFile.Write(tmp)
-	
+
 		// Put this decomp buffer back on the free list, or drop it on the floor for the GC
 		// to collect if there's no room (the assignment makes it nonblocking and don't care if fail)
 		decompFreeList <- decomp
@@ -225,7 +225,7 @@ func decompProcessor(filename string, numResidues int, ch chan []float64, termCh
 }
 
 func openTrj(filename string) (*bufio.Reader, error) {
-    // Or, do the trajectory.
+	// Or, do the trajectory.
 	trjFp, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error opening", filename, err)
@@ -236,20 +236,19 @@ func openTrj(filename string) (*bufio.Reader, error) {
 	//trjOrig := bufio.NewReader(trjFp)
 	var trj *bufio.Reader
 	if strings.HasSuffix(filename, ".gz") {
-	    inflater, err := gzip.NewReader(trjFp)
-	    if err != nil {
-	        fmt.Println("Not actually a gzip file: ", filename, err)
-	        return nil, err
-        }
-	    trj = bufio.NewReader(inflater)
-    } else {
-        trj = bufio.NewReader(trjFp)
-    }
+		inflater, err := gzip.NewReader(trjFp)
+		if err != nil {
+			fmt.Println("Not actually a gzip file: ", filename, err)
+			return nil, err
+		}
+		trj = bufio.NewReader(inflater)
+	} else {
+		trj = bufio.NewReader(trjFp)
+	}
 	trj.ReadString('\n') // Eat header line
 	fmt.Println("Opened", filename)
 	return trj, nil
 }
-
 
 var decompFreeList = make(chan []float64, 32)
 
@@ -266,23 +265,23 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	request.ResidueMap = residueMap
 	var ok bool
 	request.Decomp = <-decompFreeList
-	if (!ok) {
-	    fmt.Println("Allocating a new decomposition matrix buffer.")
-        request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())	    
-    }
-    
-    // Since we're reusing buffers, we need to zero them out
-    for i := 0; i < len(request.Decomp); i++ {
-        request.Decomp[i] = 0.0
-    }
-    
-/*    //DEBUG: print first few coordinates
-        fmt.Printf("%d [%d]:", frame, len(coords));
-        for i := 0; i < 6; i++ {
-            fmt.Printf(" %f", coords[i]);
-        }
-        fmt.Println();
-*/	
+	if !ok {
+		fmt.Println("Allocating a new decomposition matrix buffer.")
+		request.Decomp = make([]float64, mol.NumResidues()*mol.NumResidues())
+	}
+
+	// Since we're reusing buffers, we need to zero them out
+	for i := 0; i < len(request.Decomp); i++ {
+		request.Decomp[i] = 0.0
+	}
+
+	/*    //DEBUG: print first few coordinates
+	      fmt.Printf("%d [%d]:", frame, len(coords));
+	      for i := 0; i < 6; i++ {
+	          fmt.Printf(" %f", coords[i]);
+	      }
+	      fmt.Println();
+	*/
 	elec := Electro(&request)
 	vdw := LennardJones(&request)
 	if math.IsNaN(elec) || math.IsNaN(vdw) {
@@ -291,16 +290,15 @@ func calcSingleTrjFrame(mol *amber.System, params NonbondedParamsCache, coords [
 	}
 	fmt.Printf("%d: Electrostatic: %f vdW: %f Total: %f\n", frame, elec, vdw, elec+vdw)
 
-    // Release coords buffer so it can be reused
-    amber.ReleaseCoordsBuffer(coords)
-    
+	// Release coords buffer so it can be reused
+	amber.ReleaseCoordsBuffer(coords)
+
 	// Send request to listening something that will probably average the decomp matrix
 	// but could in theory do whatever it wants.
 	reqOutCh <- request.Decomp
 	// Return frame ID through channel
 	//ch <- frame
 }
-
 
 // This is probably a little unwieldy but I hope it's better than
 // zillions of arguments to every energy calculation function
@@ -427,7 +425,7 @@ func Electro(request *EnergyCalcRequest) float64 {
 		qi := charges[atom_i]
 		i_res := residueMap[atom_i] // Residue of atom i
 		// Iterate over all atoms
-		
+
 		for atom_j := 0; atom_j < atom_i; atom_j++ {
 			offs_j := atom_j * 3
 			x1, y1, z1 := coords[offs_j], coords[offs_j+1], coords[offs_j+2]
@@ -448,7 +446,7 @@ func Electro(request *EnergyCalcRequest) float64 {
 			decomp[i_res*numResidues+residueMap[atom_j]] += thisEnergy
 			decomp[i_res+residueMap[atom_j]*numResidues] += thisEnergy
 			energy += thisEnergy
-		
+
 		}
 	}
 	request.Energy = energy
@@ -483,7 +481,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	bondType := make([]uint8, numAtoms*numAtoms)
 
 	bondsBlocks := []string{"BONDS_INC_HYDROGEN", "BONDS_WITHOUT_HYDROGEN"}
-	for _, blockName := range (bondsBlocks) {
+	for _, blockName := range bondsBlocks {
 		bonds := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j indexintostuff
 		// These are actually coordinate array indices, not atom indices
@@ -495,7 +493,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	}
 
 	angleBlocks := []string{"ANGLES_WITHOUT_HYDROGEN", "ANGLES_INC_HYDROGEN"}
-	for _, blockName := range (angleBlocks) {
+	for _, blockName := range angleBlocks {
 		angles := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j atom_k indexintostuff
 		for i := 0; i < len(angles); i += 4 {
@@ -506,7 +504,7 @@ func makeBondTypeTable(mol *amber.System) []uint8 {
 	}
 
 	dihedBlocks := []string{"DIHEDRALS_INC_HYDROGEN", "DIHEDRALS_WITHOUT_HYDROGEN"}
-	for _, blockName := range (dihedBlocks) {
+	for _, blockName := range dihedBlocks {
 		diheds := amber.VectorAsIntArray(mol.Blocks[blockName])
 		// atom_i atom_j atom_k atom_l indexintostuff
 		for i := 0; i < len(diheds); i += 5 {
