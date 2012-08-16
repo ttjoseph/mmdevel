@@ -93,7 +93,7 @@ atom_types = []
 #       1 LIGH 1    ALA  N    NH3   -0.300000       14.0070           0
 found_end_of_solute = False
 num_solute_atoms = 0
-last_resid = -1
+last_resid, last_segment = -1, None
 num_residues = num_solute_residues = 0
 cys_sg_list = [] # atom indices of CYS SG atoms
 for index in xrange(num_atoms):
@@ -115,14 +115,14 @@ for index in xrange(num_atoms):
     atom_types.append(atomtype)
     
     # Are we in a new residue? If so, increment the residue count
-    if last_resid != resid: num_residues += 1
-    last_resid = resid
+    if last_resid != resid or last_segment != segment: num_residues += 1
+    last_resid, last_segment = resid, segment
     residue_map.append(num_residues)
     
     if found_end_of_solute is False and resname == "TIP3":
         found_end_of_solute = True
-        num_solute_residues = num_residues
-        print "Looks like you have %d solute atoms (guessed by taking the atoms before the first water)." % num_solute_atoms
+        num_solute_residues = num_residues - 1 # We subtract 1 because the residue count has incremented into the first non-solute atom
+        print "Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues)
         
     if found_end_of_solute is False: num_solute_atoms += 1
 
@@ -306,3 +306,5 @@ put_i32_array(out, residue_map[0:num_solute_atoms])
 #   of the LJ 1-4 scaling (divide by 1.2) that AMBER uses
 put_f32_array(out, lj1214)
 put_f32_array(out, lj614)
+
+print "All done."
