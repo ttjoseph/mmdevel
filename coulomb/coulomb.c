@@ -124,7 +124,7 @@ double LennardJones(float *coords, double *decomp) {
 
       // Distance reciprocals
       float dx = x1-x0, dy = y1-y0, dz = z1-z0;
-      double distRecip = 1 / sqrtf(dx*dx+dy*dy+dz*dz);
+      double distRecip = 1.0 / sqrt(dx*dx+dy*dy+dz*dz);
       double distRecip3 = distRecip * distRecip * distRecip;
       double distRecip6 = distRecip3 * distRecip3;
       
