@@ -160,7 +160,7 @@ int Master(int argc, char *argv[]) {
     for(int i=0; i<(NumResidues*NumResidues); i++)
       Rescorrel[i] += RescorrelFromWorker[i];
     
-    printf("Received and combined from worker %d", workerRank);
+    printf("Received results from worker %d.\n", workerRank);
   }
     
   dumpFloatMatrixToFile("rescorrel.txt", Rescorrel, NumResidues, NumResidues);
