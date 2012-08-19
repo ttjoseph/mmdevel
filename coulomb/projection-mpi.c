@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <string.h>
+#include <strings.h>
 #include <stdint.h>
 #include <zlib.h>
 #include <mpi.h>
@@ -39,7 +39,9 @@ void broadcastFloatArray(float **buf, int *size) {
 // residue-residue matrix.
 void* projectPiece() {
   int res_i = 0, res_j = 0;
-  for(res_i = Rank; res_i < NumResidues; res_i += NumNodes) {
+  // Rank 0 is the master node which doesn't do any work, so we have to account for that
+  int start = Rank-1, stride = NumNodes-1;
+  for(res_i = start; res_i < NumResidues; res_i += stride) {
     for(res_j = 0; res_j < res_i; res_j++) {
       // Like projectCorrelSingleResiduePair
       double totalCorr = 0.0;
