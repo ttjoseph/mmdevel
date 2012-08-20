@@ -214,8 +214,7 @@ int main (int argc, char *argv[])
       FILE *fp = fopen(argv[fileIdx], "r");
       // Load a batch of frames from the current file. We can't just inhale an entire file 
       // because we probably don't have enough RAM to do so.
-      int i;
-      for(i = 0; i < numFrames; i += FRAME_BATCH_SIZE) {
+      for(int i = 0; i < (int)numFrames; i += FRAME_BATCH_SIZE) {
         int thisBlockSize = min(numFrames - i, FRAME_BATCH_SIZE);
         int frame;
         printf("Calculating pairs correlation matrix: On file %s, frames %d to %d.\n", argv[fileIdx], i, i + thisBlockSize);
