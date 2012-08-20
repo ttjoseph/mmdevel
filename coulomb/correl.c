@@ -2,19 +2,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <math.h>
 #include <mpi.h>
 
-#define ENERGY_CUTOFF 1.0
+#define ENERGY_CUTOFF 10.0
 #define CORREL_CUTOFF 0.4
 #define FRAME_BATCH_SIZE 500
+#define MAX_HOSTNAME_LENGTH 1024
 
+char Hostname[MAX_HOSTNAME_LENGTH];
 int Rank, NumNodes;
 int Nresidues;
 
 void bomb(char *msg) {
-  printf("[%d] ERROR, aborting! %s\n", Rank, msg);
+  printf("[%d:%s] ERROR, aborting! %s\n", Rank, Hostname, msg);
   MPI_Abort(MPI_COMM_WORLD, 1);
   exit(1);
 }
@@ -89,6 +92,7 @@ int main (int argc, char *argv[])
 {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
+  gethostname(Hostname, MAX_HOSTNAME_LENGTH);
   MPI_Comm_size(MPI_COMM_WORLD, &NumNodes);
   
   // If rank 0, we'll load the data, distribute it to the other nodes, and write stuff to disk
@@ -354,7 +358,7 @@ int main (int argc, char *argv[])
     int ij_a = rowsToCalculate[Rank-1], ij_b = rowsToCalculate[Rank];
     // Easy way - this wastes space - see below
     int localSize = (ij_b-ij_a) * ij_b;
-    printf("[%d] ij_a = %d, ij_b = %d, localSize = %.0fMB.\n", Rank, ij_a, ij_b, (double)localSize*sizeof(double)/1048576.0);
+    printf("[%d:%s] ij_a = %d, ij_b = %d, localSize = %.0fMB.\n", Rank, Hostname, ij_a, ij_b, (double)localSize*sizeof(double)/1048576.0);
     double *numLocal = malloc(localSize * sizeof(double));
     double *denomLocal = malloc(localSize * sizeof(double));
     memset(numLocal, 0, localSize * sizeof(double));
@@ -397,6 +401,8 @@ int main (int argc, char *argv[])
             denomLocal[offs] += sqrt(a*a*b*b);
           }
         }
+        // Really verbose debugging message
+        // printf("[%d:%s] Now on %d, going from %d to %d.\n", Rank, Hostname, ij, ij_a, ij_b);
       }
     
       // End repeat.
