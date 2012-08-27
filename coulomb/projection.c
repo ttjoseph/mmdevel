@@ -107,7 +107,7 @@ int main (int argc, char const *argv[]) {
     }
   }
   fclose(fp);
-  if(idx != (NumPairs*NumPairs)) {
+  if(idx != (size_t)(NumPairs*NumPairs)) {
     printf("ERROR: We didn't load as many numbers from correl.txt as we should have.\n");
     return 1;
   }

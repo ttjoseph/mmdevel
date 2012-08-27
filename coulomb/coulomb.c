@@ -118,6 +118,9 @@ double LennardJones(float *coords, double *decomp) {
 
     int atom_j;
     for(atom_j = 0; atom_j < atom_i; atom_j++) {
+      // Don't calculate this energy within the same residue
+      if(ResidueMap[atom_j] == i_res)
+        continue;
       int offs_j = atom_j * 3;
       float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
       uint8_t thisBondType = BondType[bondtype_offs_i+atom_j];
@@ -126,7 +129,7 @@ double LennardJones(float *coords, double *decomp) {
 
       // Distance reciprocals
       float dx = x1-x0, dy = y1-y0, dz = z1-z0;
-      double distRecip = 1 / sqrtf(dx*dx+dy*dy+dz*dz);
+      double distRecip = 1.0 / sqrt(dx*dx+dy*dy+dz*dz);
       double distRecip3 = distRecip * distRecip * distRecip;
       double distRecip6 = distRecip3 * distRecip3;
       
@@ -167,6 +170,9 @@ double Electro(float *coords, double *decomp) {
     int atom_j;
     
     for(atom_j = 0; atom_j < atom_i; atom_j++) {
+      // Don't calculate this energy within the same residue
+      if(ResidueMap[atom_j] == i_res)
+        continue;
       int offs_j = atom_j * 3;
       float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
       uint8_t thisBondType = BondType[atom_i*Natoms+atom_j];
@@ -219,7 +225,7 @@ int main (int argc, char *argv[]) {
   
   // If rank 0, we'll load the data, distribute it to the other nodes, and write stuff to disk
   if(Rank == 0) {
-    printf("coulomb (C/MPI version) - T. Joseph <thomas.joseph@mssm.edu>\n\n");
+    printf("coulomb (C/MPI version) on %d nodes - T. Joseph <thomas.joseph@mssm.edu>\n\n", NumNodes);
     printf("Running on %d nodes.\n", NumNodes);
     
     if(argc < 4) {
@@ -268,6 +274,9 @@ int main (int argc, char *argv[]) {
     int linesPerFrame = Natoms * 3 / 10;
     if(Natoms*3%10 != 0)
       linesPerFrame++;
+
+    printf("Expecting %d lines per frame of the mdcrd file.\n", linesPerFrame);
+    printf("Should be %d atoms per frame.\n", Natoms);
     
     // Open the trajectory file
     gzFile trj = gzopen(argv[2], "r");
