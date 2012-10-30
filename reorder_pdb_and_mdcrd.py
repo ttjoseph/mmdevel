@@ -130,9 +130,10 @@ def load_mdcrd_frame(mdcrd, num_atoms, box=True):
 def print_frame(frame):
     '''Prints a trajectory snapshot in mdcrd format.'''
     for i in xrange(len(frame)):
-        if i != 0 and i % 10 == 0: print ""
-        print "%8.3f" % frame[i],
-        
+        sys.stdout.write("%8.3f" % frame[i])
+        if i != 0 and (i+1) % 10 == 0:
+            print ""
+    print ""
 
 if __name__ == '__main__':
     ordered_mol, scrambled_mdcrd = None, None
@@ -179,12 +180,12 @@ if __name__ == '__main__':
     for i in xrange(len(ordered_mol.atoms)):
         # Try to find this atom in the scrambled atom table
         a = ordered_mol.atoms[i]
-        q = "SELECT * FROM mol WHERE atomname = :atomname AND resname = :resname AND chain = :chain AND resid = :resid"
-        c.execute(q, {"atomname": a.atomname, "resname": a.resname, "chain": a.chain, "resid": a.resid})
+        q = "SELECT * FROM mol WHERE atomname = :atomname AND x = :x AND y = :y AND z = :z"
+        c.execute(q, {"atomname": a.atomname, "x": a.x, "y": a.y, "z": a.z})
         conn.commit()
         recs = c.fetchall()
-        if len(recs) > 1:
-            print >>sys.stderr, "More than one atom found in scrambled_mol for a given ordered atom!"
+        if len(recs) != 1:
+            print >>sys.stderr, "Ambiguous mapping between scrambled and ordered molecules!"
             sys.exit(1)
         r = recs[0]
         # print "atomid: ordered[%d] = scrambled[%d]" % (a.atomid, r[0])
