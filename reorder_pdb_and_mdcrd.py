@@ -34,6 +34,11 @@ class AtomRecord:
 
         self.rename_opls_to_amber()
 
+    def __str__(self):
+        return "ATOM  %5d %4s %3s %1s%4d    %8.3f%8.3f%8.3f%6.2f%6.2f                  " % \
+            (self.atomid, self.atomname, self.resname, self.chain, self.resid, self.x, self.y, self.z, \
+            self.occupancy, self.tempfactor)
+
     def rename_opls_to_amber(self):
         '''Converts what I assume to be OPLS atom names to AMBER convention.
         
@@ -52,7 +57,13 @@ class AtomRecord:
             elif self.atomname == 'CA': self.atomname = 'CH3'
             self.resname = 'NME'
 
+        if self.resname == 'GLY':
+            if self.atomname == 'H2': self.atomname = 'H'
+
         if self.resname == 'GLU':
+            if self.atomname == 'OXT': self.atomname = 'O'
+
+        if self.resname == 'SER':
             if self.atomname == 'OXT': self.atomname = 'O'
 
         if self.resname == 'ASN':
@@ -61,8 +72,11 @@ class AtomRecord:
         if self.resname == 'LYS':
             if self.atomname == 'H2': self.atomname = 'H'
 
-        if self.resname == 'HIS':
-            self.resname = 'HID'
+        if self.resname == 'ILE':
+            if self.atomname == 'H2': self.atomname = 'H'
+
+        # if self.resname == 'HIS':
+        #     self.resname = 'HID'
 
 class Molecule:
     '''Represents an entire molecule loaded from a PDB file.'''
@@ -105,7 +119,14 @@ def print_molecule_from_sql(conn):
         (atomid, atomname, resname, chain, resid, x, y, z, occupancy, tempfactor) = rec
         print atom_record(i+1, atomname, resname, chain, resid, x, y, z, occupancy, tempfactor)
 
-def load_mdcrd_frame(mdcrd, num_atoms, box=True):
+def split_mdcrd_line(s):
+    r = []
+    for i in xrange(0, 10):
+        tmp = s[i*8:i*8+8].strip()
+        if tmp != '': r.append(tmp)
+    return r
+
+def load_mdcrd_frame(mdcrd, num_atoms, box=False):
     """Loads a frame from an open mdcrd file, returning a list of coordinates that is 3*num_atoms in length.
     
     Box information is discarded."""
@@ -118,7 +139,7 @@ def load_mdcrd_frame(mdcrd, num_atoms, box=True):
         s = mdcrd.readline()
         # If we've (possibly prematurely) reached EOF, this is not a complete frame, so return None
         if s == '': return None
-        frame += [float(x) for x in s.split()]
+        frame += [float(x) for x in split_mdcrd_line(s)]
     # Discard box information if it is present
     if box: mdcrd.readline()
     
@@ -147,9 +168,9 @@ if __name__ == '__main__':
         ordered_mol.nuke_solvent()
         if len(scrambled_mol.atoms) != len(ordered_mol.atoms):
             print >>sys.stderr, "Number of atoms, %d vs %d does not match, fool." % (len(scrambled_mol.atoms), len(ordered_mol.atoms))
-            sys.exit(1)
+            # sys.exit(1)
         # Open the trajectory file and discard the header line
-        scrambled_mdcrd = gzip.open(sys.argv[3], 'r')
+        scrambled_mdcrd = open(sys.argv[3], 'r')
         scrambled_mdcrd.readline()
     
     # Create a temporary in-memory table to store the structure
@@ -180,12 +201,13 @@ if __name__ == '__main__':
     for i in xrange(len(ordered_mol.atoms)):
         # Try to find this atom in the scrambled atom table
         a = ordered_mol.atoms[i]
-        q = "SELECT * FROM mol WHERE atomname = :atomname AND x = :x AND y = :y AND z = :z"
-        c.execute(q, {"atomname": a.atomname, "x": a.x, "y": a.y, "z": a.z})
+        q = "SELECT * FROM mol WHERE x = :x AND y = :y AND z = :z"
+        c.execute(q, {"x": a.x, "y": a.y, "z": a.z})
         conn.commit()
         recs = c.fetchall()
         if len(recs) != 1:
             print >>sys.stderr, "Ambiguous mapping between scrambled and ordered molecules!"
+            print >>sys.stderr, a
             sys.exit(1)
         r = recs[0]
         # print "atomid: ordered[%d] = scrambled[%d]" % (a.atomid, r[0])
