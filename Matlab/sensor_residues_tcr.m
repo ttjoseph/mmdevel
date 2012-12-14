@@ -28,33 +28,3 @@ dvar = (dsumsq - (dsum.*dmean)) / (NUM_STRUCTS - 1);
 % Root mean square (more informative than a straight sum) since opposite signs can't cancel
 sumdrms = sum(sqrt(dsumsq / NUM_STRUCTS));
 sensor_residues = find(sumdrms > (mean(sumdrms) + 2*std(sumdrms)))
-
-% How do we know which residues are relevant?
-
-
-% NUM_SUBPLOTS = 5;
-% BOUNDS = [1 685];
-% RESIDUE = 546;
-% figure;
-% subplot(NUM_SUBPLOTS, 1, 1); 
-% 
-% plot(g3t(RESIDUE,:) - fm(RESIDUE,:));
-% xlim(BOUNDS);
-% ylabel('G3T');
-% subplot(NUM_SUBPLOTS, 1, 2); 
-% plot(a4c(RESIDUE,:) - fm(RESIDUE,:));
-% xlim(BOUNDS);
-% ylabel('A4C');
-% subplot(NUM_SUBPLOTS, 1, 3); 
-% plot(a4t(RESIDUE,:) - fm(RESIDUE,:));
-% xlim(BOUNDS);
-% ylabel('A4T');
-% subplot(NUM_SUBPLOTS, 1, 4); 
-% plot(g6c(RESIDUE,:) - fm(RESIDUE,:));
-% xlim(BOUNDS);
-% ylabel('G6C');
-% subplot(NUM_SUBPLOTS, 1, 5); 
-% plot(t7g(RESIDUE,:) - fm(RESIDUE,:));
-% xlim(BOUNDS);
-% ylabel('T7G');
-
