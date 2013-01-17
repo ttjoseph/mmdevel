@@ -1,4 +1,3 @@
-from AMBER import *
 import sys
 
 class AtomRecord:
@@ -53,7 +52,7 @@ class PDB:
         
 
 
-info("colorize_pdb: colorizes a PDB by residue")
+info("ev_animate_pdb: animates PDB along eigenvector path")
 
 if len(sys.argv) < 3:
     print >>sys.stderr, "Usage: <pdb> <value-filename>"
@@ -65,7 +64,7 @@ ev = []
 for line in open(sys.argv[2]):
     try:
         values = [float(x) for x in line.strip().split()]
-        ev.append(values)
+        ev.extend(values)
     except ValueError:
         print "That be wack, yo."
         sys.exit()
@@ -81,9 +80,9 @@ while coeff <= 1:
     oldatoms = pdb.atoms
     i = 0
     for atom in pdb.atoms:
-        pdb.atoms[i].x += ev[i][0] * coeff * scale
-        pdb.atoms[i].y += ev[i][1] * coeff * scale
-        pdb.atoms[i].x += ev[i][2] * coeff * scale
+        pdb.atoms[i].x += ev[i*3] * coeff * scale
+        pdb.atoms[i].y += ev[i*3+1] * coeff * scale
+        pdb.atoms[i].x += ev[i*3+2] * coeff * scale
         i += 1
 
     pdb.write(sys.stdout)
