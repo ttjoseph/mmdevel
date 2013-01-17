@@ -156,6 +156,35 @@ def print_frame(frame):
             print ""
     print ""
 
+def rename_cys_for_disulfide_bridges(conn):
+    """Renames CYS residues that do not have an HG atom to CYX.
+
+    This has the effect of allowing LEaP to infer the presence of disulfide bridges,
+    instead of adding on the HG itself. (CYS is the non-bridged cysteine, while CYX
+    is the bridged one.)
+    """
+
+    c = conn.cursor()
+    all_cys_query = "SELECT DISTINCT resid, chain FROM mol WHERE resname = 'CYS' "
+    nonbridged_cys_query = "SELECT DISTINCT resid, chain FROM mol WHERE resname = 'CYS' AND atomname = 'HG'"
+    c.execute(all_cys_query)
+    conn.commit()
+    # Return value of c.fetchall() has structure [(1),(2),(3)]
+    all_cys = [str(x[0])+" "+x[1] for x in c.fetchall()]
+    c.execute(nonbridged_cys_query)
+    conn.commit()
+    nonbridged_cys = [str(x[0])+" "+x[1] for x in c.fetchall()]
+
+    bridged_cys = set(all_cys) - set(nonbridged_cys)
+    # Now that we have found the set of CYS residues we need to rename,
+    # we can go ahead and rename them
+    rename_query = "UPDATE mol SET resname = 'CYX' WHERE resid = :resid AND chain = :chain"
+    for residue in bridged_cys:
+        (resid, chain) = residue.split()
+        c.execute(rename_query, {"resid": resid, "chain": chain}) 
+    conn.commit()
+
+
 if __name__ == '__main__':
     ordered_mol, scrambled_mdcrd = None, None
     scrambled_mol = Molecule(sys.argv[1])
@@ -183,6 +212,8 @@ if __name__ == '__main__':
     for a in scrambled_mol.atoms:
         c.execute(insert_query, {"atomid": a.atomid, "atomname": a.atomname, "resname": a.resname, "chain": a.chain, "resid": a.resid, "x": a.x, "y": a.y, "z": a.z, "occupancy": a.occupancy, "tempfactor": a.tempfactor})
     conn.commit()
+
+    rename_cys_for_disulfide_bridges(conn)
     
     # If we only wanted to reorder the PDB, just do that and exit
     if ordered_mol is None:
