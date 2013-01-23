@@ -86,7 +86,7 @@ void dumpFloatMatrixToFile(char *filename, float *data, int numRows, int numCols
 }
 
 int Master(int argc, char *argv[]) {
-  printf("projection (C/MPI version) on %d nodes - T. Joseph <thomas.joseph@mssm.edu>\n\n", NumNodes);
+  printf("projection (C/MPI version) on %d nodes - T. Joseph <thomas.joseph@mountsinai.org>\n\n", NumNodes);
   
   if(argc < 2) {
     bomb("Usage: <num-residues>\n\nWe assume you want to load correl.txt and pairs.txt and write to rescorrel.txt.\n");

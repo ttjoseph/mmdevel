@@ -1,5 +1,5 @@
 // C/pthreads version of the project-matrix function in correl.go
-// Tom Joseph <thomas.joseph@mssm.edu>
+// Tom Joseph <thomas.joseph@mountsinai.org>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -65,7 +65,7 @@ void* projectPiece(void *ptr) {
 }
 
 int main (int argc, char const *argv[]) {
-  printf("projection (C version) - T. Joseph <thomas.joseph@mssm.edu>\n\n");
+  printf("projection (C version) - T. Joseph <thomas.joseph@mountsinai.org>\n\n");
   printf("Using %d threads.\n", NUM_THREADS);
 
   if(argc < 2) {

@@ -97,7 +97,7 @@ int main (int argc, char *argv[])
   
   // If rank 0, we'll load the data, distribute it to the other nodes, and write stuff to disk
   if(Rank == 0) {
-    printf("correl (C/MPI version) on %d nodes - T. Joseph <thomas.joseph@mssm.edu>\n\n", NumNodes);
+    printf("correl (C/MPI version) - T. Joseph <thomas.joseph@mountsinai.org>\n\n");
     printf("Running on %d nodes.\n", NumNodes);
     
     // Usage: <num-residues> <md.ene.bin.0> [md.ene.bin.1] [...]
