@@ -80,7 +80,7 @@ float *LJ6_14; int NumLJ6_14;
 float *Charges; int NumCharges;
 uint8_t *BondType; int NumBondType;
 int *ResidueMap, NumResidueMap;
-int CharmmMode = 0;
+int CharmmMode = 0, UseDielectricScreening = 1;
 
 // Synchronize parameters for the molecule
 void syncMolecule() {
@@ -154,6 +154,23 @@ double LennardJones(float *coords, double *decomp) {
   
 }
 
+// Dielectric screening function, of the form described in:
+// Mehler and Guarnieri, pH-Dependent Electrostatic Effecrts in Proteins, Biophys J, 1999
+//    D(r) = (Ds + D0)/[1 + k*exp(-lambda*(Ds + D0)*r)] - D0
+// Parameters are also taken from that paper.
+//    dist is the distance between the two point charges in question.
+double dielectricScreening(double dist) {
+	// Dielectric constant of water
+	double Ds = 78.4;
+	// These parameters were chosen; see the cited paper for details
+	double D0 = 15.0, lambda = 0.003;
+	double B = Ds + D0;
+	// We decide that D(0) = 1 as this form of the equation is derived by integrating
+  // and k is a constant of integration. So we have to choose. (As per the paper.)
+	double k = (Ds - 1)/(D0 + 1);
+	return B/(1+k*exp(-lambda*B*dist)) - D0;
+}
+
 // Calculates pairwise electrostatic energies; no cutoff/PME/etc
 double Electro(float *coords, double *decomp) {
   double energy = 0.0;
@@ -164,24 +181,28 @@ double Electro(float *coords, double *decomp) {
     float x0 = coords[offs_i], y0 = coords[offs_i+1], z0 = coords[offs_i+2];
     float qi = Charges[atom_i];
     int i_res = ResidueMap[atom_i]; // Residue of atom i
+
     // Iterate over all atoms
-    int atom_j;
-    
-    for(atom_j = 0; atom_j < atom_i; atom_j++) {
+    for(int atom_j = 0; atom_j < atom_i; atom_j++) {
       // Don't calculate this energy within the same residue
-      if(ResidueMap[atom_j] == i_res)
-        continue;
-      int offs_j = atom_j * 3;
-      float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
+      if(ResidueMap[atom_j] == i_res) continue;
       uint8_t thisBondType = BondType[atom_i*Natoms+atom_j];
       // Skip this atom pair if they are connected by a bond or angle
       if((thisBondType & (BOND|ANGLE)) != 0) continue;
 
+      int offs_j = atom_j * 3;
+      float x1 = coords[offs_j], y1 = coords[offs_j+1], z1 = coords[offs_j+2];
       float dx = x1-x0, dy = y1-y0, dz = z1-z0;
-      double thisEnergy = (qi * Charges[atom_j]) / sqrtf(dx*dx+dy*dy+dz*dz);
+      double dist = sqrt(dx*dx+dy*dy+dz*dz);
+	  
+      // Scale the distance according to the dielectric screening function, which
+      // means it's not really a distance anymore
+      if(UseDielectricScreening) dist *= dielectricScreening(dist);
+      
+      double thisEnergy = (qi * Charges[atom_j]) / dist;
 
       // Are these atoms 1-4 to each other? If so, divide the energy
-			// by 1.2, as ff99 et al dictate, but not for CHARMM.
+      // by 1.2, as ff99 et al dictate, but not for CHARMM.
       if(!CharmmMode && (thisBondType & DIHEDRAL) != 0)
         thisEnergy *= EEL_14_SCALING_RECIP;
       
@@ -249,6 +270,7 @@ int main (int argc, char *argv[]) {
     // Calculate how many lines per frame in the trajectory file, for ease of reading
     int hasBox = 0; 
     fread(&hasBox, sizeof(int), 1, fp);
+	hasBox = 1;
     if(hasBox)
         printf("Expecting a trajectory with box information. If it doesn't have this, the energies will be messed up.\n");
     else
