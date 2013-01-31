@@ -3,6 +3,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdint.h>
+#include <getopt.h>
 #include <zlib.h>
 #include <mpi.h>
 
@@ -233,12 +234,34 @@ int main (int argc, char *argv[]) {
     printf("Running on %d nodes.\n", NumNodes);
     
     if(argc < 4) {
-      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [charmm]\n");
+      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [-bnc]\n");
+      printf("  -b: Force reading of box information from mdcrd\n");
+      printf("  -n: Don't read box information from mdcrd\n");
+      printf("  -c: Use CHARMM mode (e.g. solute.top.tom was created from CHARMM PSF)\n");
+      printf("\nUsing -b or -n will override what the solute.top.tom file says.\n");
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
+
+    // -1 is a magic value that says we don't know whether to read box info yet
+    int hasBox = -1;
+    int opt;
+    // Parse command-line flags
+    while((opt = getopt(argc, argv, "bcn")) != -1) {
+      switch(opt) {
+      case 'b':
+        hasBox = 1;
+        break;
+      case 'n':
+        hasBox = 0;
+        break;
+      case 'c': // CHARMM mode
+        CharmmMode = 1;
+        break;
+      }
+    }
     
-    FILE *fp = fopen(argv[1], "r");
+    FILE *fp = fopen(argv[optind], "r");
     if(!fp) bomb("Couldn't open preprocessed prmtop.");
     
     // Load the preprocessed binary version of the prmtop
@@ -252,9 +275,8 @@ int main (int argc, char *argv[]) {
     Charges = loadFloatArray(fp, &NumCharges);
     BondType = loadByteArray(fp, &NumBondType);
     ResidueMap = loadIntArray(fp, &NumResidueMap);
-    if(argc > 4 && strncmp(argv[4], "charmm", 6) == 0) {
-      printf("CHARMM mode on - that means I'm reading extra LJ 1-4 terms from %s.\n", argv[1]);
-      CharmmMode = 1;
+    if(CharmmMode == 1) {
+      printf("CHARMM mode on - that means I'm reading extra LJ 1-4 terms from %s.\n", argv[optind]);
       LJ12_14 = loadFloatArray(fp, &NumLJ12_14);
       LJ6_14 = loadFloatArray(fp, &NumLJ6_14);
       if(NumLJ12_14 != NumLJ12 || NumLJ6_14 != NumLJ6)
@@ -268,9 +290,14 @@ int main (int argc, char *argv[]) {
     }
     
     // Calculate how many lines per frame in the trajectory file, for ease of reading
-    int hasBox = 0; 
-    fread(&hasBox, sizeof(int), 1, fp);
-	  hasBox = 1;
+    // We care about the box information in the topology file only if it wasn't specified
+    // on the command line.
+    if(hasBox == -1) {
+      fread(&hasBox, sizeof(int), 1, fp);
+    } else {
+      int dummy;
+      fread(&dummy, sizeof(int), 1, fp);
+    }
     if(hasBox)
         printf("Expecting a trajectory with box information. If it doesn't have this, the energies will be messed up.\n");
     else
@@ -284,13 +311,13 @@ int main (int argc, char *argv[]) {
     printf("Should be %d atoms per frame.\n", Natoms);
     
     // Open the trajectory file
-    gzFile trj = gzopen(argv[2], "r");
+    gzFile trj = gzopen(argv[optind+1], "r");
     char line[256];
     // Eat header line
     gzgets(trj, line, 256);
     
     // Open the md.ene.bin file - for writing raw decomposition matrices
-    FILE *eneOut = fopen(argv[3], "w");
+    FILE *eneOut = fopen(argv[optind+2], "w");
   
     // Tell all the worker nodes about the molecule we're examining
     syncMolecule();
