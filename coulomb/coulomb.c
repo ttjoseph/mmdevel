@@ -308,7 +308,7 @@ int main (int argc, char *argv[]) {
       linesPerFrame++;
 
     printf("Expecting %d lines per frame of the mdcrd file.\n", linesPerFrame);
-    printf("Should be %d atoms per frame.\n", Natoms);
+    printf("Should be %d atoms (%d residues) per frame.\n", Natoms, Nresidues);
     
     // Open the trajectory file
     gzFile trj = gzopen(argv[optind+1], "r");
