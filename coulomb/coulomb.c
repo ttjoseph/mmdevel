@@ -81,7 +81,9 @@ float *LJ6_14; int NumLJ6_14;
 float *Charges; int NumCharges;
 uint8_t *BondType; int NumBondType;
 int *ResidueMap, NumResidueMap;
-int CharmmMode = 0, UseDielectricScreening = 1;
+int CharmmMode = 0;
+// In the general neighborhood of the dielectric constant of a folded protein
+double DielectricConstant = 4.0;
 
 // Synchronize parameters for the molecule
 void syncMolecule() {
@@ -100,6 +102,7 @@ void syncMolecule() {
   }
   syncFloatArray(&Charges, &NumCharges);
   syncByteArray(&BondType, &NumBondType);
+  MPI_Bcast(&DielectricConstant, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
 // van der Waals calculation by Lennard-Jones 12-6 method as used by AMBER. No cutoffs etc
@@ -155,32 +158,23 @@ double LennardJones(float *coords, double *decomp) {
   
 }
 
-// Dielectric screening function, of the form described in:
-// Mehler and Guarnieri, pH-Dependent Electrostatic Effecrts in Proteins, Biophys J, 1999
-//    D(r) = (Ds + D0)/[1 + k*exp(-lambda*(Ds + D0)*r)] - D0
-// Parameters are also taken from that paper.
-//    dist is the distance between the two point charges in question.
-double dielectricScreening(double dist) {
-	// Dielectric constant of water
-	// double Ds = 78.4;
-	// "Dielectric constant" of protein which is really just a guess that has been
-	// made in the literature. Hopefully should be OK for our purposes
-	double Ds = 4.0; 
-	// These parameters were chosen; see the cited paper for details
-	double D0 = 15.0, lambda = 0.003;
-	double B = Ds + D0;
-	// We decide that D(0) = 1 as this form of the equation is derived by integrating
-  // and k is a constant of integration. So we have to choose. (As per the paper.)
-	double k = (Ds - 1)/(D0 + 1);
-	return B/(1+k*exp(-lambda*B*dist)) - D0;
-}
-
 // Calculates pairwise electrostatic energies; no cutoff/PME/etc
 double Electro(float *coords, double *decomp) {
+  // We use a dielectric screening function, of the form described in:
+  // Mehler and Guarnieri, pH-Dependent Electrostatic Effecrts in Proteins, Biophys J, 1999
+  //    D(r) = (Ds + D0)/[1 + k*exp(-lambda*(Ds + D0)*r)] - D0
+  // D(0) = 1 by definition because at short distances we assume the medium is vacuum and
+  // then increase the dielectric constant with distance until it reaches Ds.
+  // The other parameters are taken from that paper.
+  //    dist is the distance between the two point charges in question.
+	double D0 = 15.0, lambda = 0.003;
+	double B = DielectricConstant + D0;
+	double k = (DielectricConstant - 1)/(D0 + 1);
+
+  // Total pairwise electrostatic interaction energy
   double energy = 0.0;
-  int atom_i;
 	
-  for(atom_i = 0; atom_i < Natoms; atom_i++) {
+  for(int atom_i = 0; atom_i < Natoms; atom_i++) {
     int offs_i = atom_i * 3;
     float x0 = coords[offs_i], y0 = coords[offs_i+1], z0 = coords[offs_i+2];
     float qi = Charges[atom_i];
@@ -201,7 +195,7 @@ double Electro(float *coords, double *decomp) {
 	  
       // Scale the distance according to the dielectric screening function, which
       // means it's not really a distance anymore
-      if(UseDielectricScreening) dist *= dielectricScreening(dist);
+      dist *= B/(1+k*exp(-lambda*B*dist)) - D0;
       
       double thisEnergy = (qi * Charges[atom_j]) / dist;
 
@@ -237,11 +231,14 @@ int main (int argc, char *argv[]) {
     printf("Running on %d nodes.\n", NumNodes);
     
     if(argc < 4) {
-      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [-bnc]\n");
+      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [-bnc] [d <number>]\n");
       printf("  -b: Force reading of box information from mdcrd\n");
       printf("  -n: Don't read box information from mdcrd\n");
       printf("  -c: Use CHARMM mode (e.g. solute.top.tom was created from CHARMM PSF)\n");
-      printf("\nUsing -b or -n will override what the solute.top.tom file says.\n");
+      printf("  -d: Specify dielectric constant\n");
+      printf("\nDielectric screening curve grows sigmoidally by distance; default %.1f.\n",
+        DielectricConstant);
+      printf("Using -b or -n will override what the solute.top.tom file says.\n");
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
@@ -250,7 +247,7 @@ int main (int argc, char *argv[]) {
     int hasBox = -1;
     int opt;
     // Parse command-line flags
-    while((opt = getopt(argc, argv, "bcn")) != -1) {
+    while((opt = getopt(argc, argv, "bcnd:")) != -1) {
       switch(opt) {
       case 'b':
         hasBox = 1;
@@ -260,6 +257,9 @@ int main (int argc, char *argv[]) {
         break;
       case 'c': // CHARMM mode
         CharmmMode = 1;
+        break;
+      case 'd':
+        DielectricConstant = atof(optarg);
         break;
       }
     }
@@ -312,6 +312,7 @@ int main (int argc, char *argv[]) {
 
     printf("Expecting %d lines per frame of the mdcrd file.\n", linesPerFrame);
     printf("Should be %d atoms (%d residues) per frame.\n", Natoms, Nresidues);
+    printf("Using dielectric constant of %.1f.\n", DielectricConstant);
     
     // Open the trajectory file
     gzFile trj = gzopen(argv[optind+1], "r");
