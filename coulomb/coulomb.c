@@ -162,7 +162,10 @@ double LennardJones(float *coords, double *decomp) {
 //    dist is the distance between the two point charges in question.
 double dielectricScreening(double dist) {
 	// Dielectric constant of water
-	double Ds = 78.4;
+	// double Ds = 78.4;
+	// "Dielectric constant" of protein which is really just a guess that has been
+	// made in the literature. Hopefully should be OK for our purposes
+	double Ds = 4.0; 
 	// These parameters were chosen; see the cited paper for details
 	double D0 = 15.0, lambda = 0.003;
 	double B = Ds + D0;
