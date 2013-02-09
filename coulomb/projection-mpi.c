@@ -38,18 +38,16 @@ void broadcastFloatArray(float **buf, int *size) {
 // Does 1/NUM_THREADS part of the work of projecting the correlation matrix back onto a
 // residue-residue matrix.
 void* projectPiece() {
-  int res_i = 0, res_j = 0;
   // Rank 0 is the master node which doesn't do any work, so we have to account for that
   int start = Rank-1, stride = NumNodes-1;
-  for(res_i = start; res_i < NumResidues; res_i += stride) {
-    for(res_j = 0; res_j < res_i; res_j++) {
+  for(int res_i = start; res_i < NumResidues; res_i += stride) {
+    for(int res_j = 0; res_j < res_i; res_j++) {
       // Like projectCorrelSingleResiduePair
       double totalCorr = 0.0;
-      int ij, kl;
-      for(ij = 0; ij < NumPairs; ij++) {
+      for(int ij = 0; ij < NumPairs; ij++) {
         int pair_i = Pairs[ij*2];
         int pair_j = Pairs[ij*2+1];
-        for(kl = 0; kl < ij; kl++) {
+        for(int kl = 0; kl < ij; kl++) {
           int pair_k = Pairs[kl*2];
           int pair_l = Pairs[kl*2+1];
           if(((pair_i == res_i || pair_j == res_i) && (pair_k == res_j || pair_l == res_j))
@@ -74,9 +72,9 @@ void* projectPiece() {
 
 void dumpFloatMatrixToFile(char *filename, float *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
-  int row, col, ptr = 0;
-  for(row = 0; row < numRows; row++) {
-    for(col = 0; col < numCols; col++) {
+  int ptr = 0;
+  for(int row = 0; row < numRows; row++) {
+    for(int col = 0; col < numCols; col++) {
       if(col != 0) fprintf(fp, " ");
       fprintf(fp, "%f", data[ptr++]);
     }
@@ -112,12 +110,11 @@ int Master(int argc, char *argv[]) {
   Pairs = malloc(sizeof(int)*NumPairs*2);
   
   // Really not too robust file reading...assumes perfectly formed correl.txt
-  int line, tok;
   size_t idx = 0;
-  for(line = 0; line < NumPairs; line++) {
+  for(int line = 0; line < NumPairs; line++) {
     fgets(buf, LINE_BUF_SIZE, fp);
     Correl[idx++] = (float) strtod(strtok(buf, " "), NULL);
-    for(tok = 1; tok < NumPairs; tok++) {
+    for(int tok = 1; tok < NumPairs; tok++) {
       Correl[idx++] = (float) strtod(strtok(NULL, " "), NULL);
     }
   }
@@ -129,7 +126,7 @@ int Master(int argc, char *argv[]) {
   // Pretty ghetto to copy and paste code like this, but oh well
   fp = fopen("pairs.txt", "r");
   idx = 0;
-  for(line = 0; line < NumPairs; line++) {
+  for(int line = 0; line < NumPairs; line++) {
     fgets(buf, LINE_BUF_SIZE, fp);
     Pairs[idx++] = atoi(strtok(buf, " "));
     Pairs[idx++] = atoi(strtok(NULL, " "));

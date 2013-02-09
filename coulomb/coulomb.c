@@ -108,9 +108,8 @@ void syncMolecule() {
 // van der Waals calculation by Lennard-Jones 12-6 method as used by AMBER. No cutoffs etc
 double LennardJones(float *coords, double *decomp) {
   double energy = 0.0;
-  int atom_i;
 	
-  for(atom_i = 0; atom_i < Natoms; atom_i++) {
+  for(int atom_i = 0; atom_i < Natoms; atom_i++) {
     int offs_i = atom_i * 3;
     float x0 = coords[offs_i], y0 = coords[offs_i+1], z0 = coords[offs_i+2];
     // Pulled some of the matrix indexing out of the inner loop
@@ -118,8 +117,7 @@ double LennardJones(float *coords, double *decomp) {
     int bondtype_offs_i = atom_i * Natoms;
     int i_res = ResidueMap[atom_i]; // Residue of atom i
 
-    int atom_j;
-    for(atom_j = 0; atom_j < atom_i; atom_j++) {
+    for(int atom_j = 0; atom_j < atom_i; atom_j++) {
       // Don't calculate this energy within the same residue
       if(ResidueMap[atom_j] == i_res)
         continue;
@@ -213,9 +211,8 @@ double Electro(float *coords, double *decomp) {
 }
 
 int checksum(char *data, int len) {
-  int i;
   int foo = 0;
-  for(i = 0; i < len; i++)
+  for(int i = 0; i < len; i++)
     foo += data[i];
   return foo;
 }
@@ -338,9 +335,8 @@ int main (int argc, char *argv[]) {
     memset(occupied, 0, sizeof(int) * (NumNodes-1));
     float *requestBuf[NumNodes-1];
     double *resultBuf[NumNodes-1];
-    int node;
     // Allocate request/coordinate buffers
-    for(node = 0; node < (NumNodes-1); node++) {
+    for(int node = 0; node < (NumNodes-1); node++) {
       requestBuf[node] = (float*) malloc(sizeof(float) * (Natoms*3+1));
       requestBuf[node][0] = 0.0f; // Keep on truckin'
       resultBuf[node] = (double*) malloc(sizeof(double) * (Nresidues*Nresidues));
@@ -354,11 +350,11 @@ int main (int argc, char *argv[]) {
     
     for(;;) {
       // Assign work to any unassigned nodes
-      for(node = 0; node < (NumNodes-1); node++) {
+      for(int node = 0; node < (NumNodes-1); node++) {
         if(!occupied[node]) {
           // Load a frame from the trajectory file. 10 reals per line, 8 chars per real
-          int idx = 1, i, j;
-          for(i = 0; i < linesPerFrame; i++) {
+          int idx = 1;
+          for(int i = 0; i < linesPerFrame; i++) {
             char *ret = gzgets(trj, line, 256);
             if(ret == NULL) {
               // No frames left, so stop
@@ -366,7 +362,7 @@ int main (int argc, char *argv[]) {
               break;
             }
             int len = strlen(line);
-            for(j = 0; j < len-1; j+=8) {
+            for(int j = 0; j < len-1; j+=8) {
               requestBuf[node][idx] = (float) strtod(line+j, NULL);
               idx++;
             }
@@ -391,8 +387,7 @@ int main (int argc, char *argv[]) {
         printf("OK, I think we're all finished. Just gotta get those last few frames: %d\n", waitFor);
       }
       MPI_Status status;
-      int i;
-      for(i = 0; i < waitFor; i++) {
+      for(int i = 0; i < waitFor; i++) {
         if(MPI_Waitany(NumNodes-1, requests, &index, &status) != MPI_SUCCESS)
           bomb("MPI_Waitany");
         // node rank 1 is index 0 here
@@ -407,15 +402,14 @@ int main (int argc, char *argv[]) {
         occupiedCount--;
         
         // Convert decomp matrix to floats and dump it to the file
-        int k;
-        for(k = 0; k < (Nresidues*Nresidues); k++)
+        for(int k = 0; k < (Nresidues*Nresidues); k++)
           floatBuf[k] = (float) resultBuf[index][k];
         fwrite(floatBuf, sizeof(float), Nresidues*Nresidues, eneOut);
       } // for waitFor
       
       if(finished) {
         // Tell node to quit if we're finished
-        for(node = 1; node < NumNodes; node++) {
+        for(int node = 1; node < NumNodes; node++) {
           requestBuf[node-1][0] = 1.0f;
           if(MPI_Send(requestBuf[node-1], Natoms*3+1, MPI_FLOAT, node, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
             bomb("MPI_Send Telling worker node to quit");

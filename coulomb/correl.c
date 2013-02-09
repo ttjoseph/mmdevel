@@ -7,7 +7,7 @@
 #include <math.h>
 #include <mpi.h>
 
-#define ENERGY_CUTOFF 10.0
+#define ENERGY_CUTOFF 1.0
 #define CORREL_CUTOFF 0.4
 #define FRAME_BATCH_SIZE 500
 #define MAX_HOSTNAME_LENGTH 1024
@@ -48,9 +48,9 @@ int min(int a, int b) {
 // Assumes matrix is stored row by row
 void dumpIntMatrixToFile(char *filename, int *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
-  int row, col, ptr = 0;
-  for(row = 0; row < numRows; row++) {
-    for(col = 0; col < numCols; col++) {
+  int ptr = 0;
+  for(int row = 0; row < numRows; row++) {
+    for(int col = 0; col < numCols; col++) {
       if(col != 0) fprintf(fp, " ");
       fprintf(fp, "%d", data[ptr++]);
     }
@@ -62,9 +62,9 @@ void dumpIntMatrixToFile(char *filename, int *data, int numRows, int numCols) {
 // Dumps a matrix of doubles to a text file
 void dumpDoubleMatrixToFile(char *filename, double *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
-  int row, col, ptr = 0;
-  for(row = 0; row < numRows; row++) {
-    for(col = 0; col < numCols; col++) {
+  int ptr = 0;
+  for(int row = 0; row < numRows; row++) {
+    for(int col = 0; col < numCols; col++) {
       if(col != 0) fprintf(fp, " ");
       fprintf(fp, "%f", data[ptr++]);
     }
@@ -77,9 +77,9 @@ void dumpDoubleMatrixToFile(char *filename, double *data, int numRows, int numCo
 // Dumps a matrix of floats to a text file
 void dumpFloatMatrixToFile(char *filename, float *data, int numRows, int numCols) {
   FILE *fp = fopen(filename, "w");
-  int row, col, ptr = 0;
-  for(row = 0; row < numRows; row++) {
-    for(col = 0; col < numCols; col++) {
+  int ptr = 0;
+  for(int row = 0; row < numRows; row++) {
+    for(int col = 0; col < numCols; col++) {
       if(col != 0) fprintf(fp, " ");
       fprintf(fp, "%f", data[ptr++]);
     }
@@ -117,10 +117,9 @@ int main (int argc, char *argv[])
     double *averageEnergies = malloc(Nresidues*Nresidues*sizeof(double));
     memset(averageEnergies, 0, Nresidues*Nresidues*sizeof(double));
     
-    int i;
     int totalNumFrames = 0;
     float *buf = malloc(Nresidues*Nresidues*sizeof(float));
-    for(i = 2; i < argc; i++) {
+    for(int i = 2; i < argc; i++) {
       int numFrames = numFramesInFile(argv[i], Nresidues);
       printf("Calculating average matrix: %s with %d frames...\n", argv[i], numFrames);
       FILE *fp = fopen(argv[i], "r");
@@ -137,8 +136,7 @@ int main (int argc, char *argv[])
         }
         // printf("Frame %d energy: %f\n", frame, ene); // DEBUG
         
-        int j;
-        for(j = 0; j < Nresidues*Nresidues; j++)
+        for(int j = 0; j < Nresidues*Nresidues; j++)
           averageEnergies[j] += (double) buf[j];
       }
       fclose(fp);
@@ -150,8 +148,7 @@ int main (int argc, char *argv[])
     // technique of counting how many there are on a first pass, then allocating an array of the
     // correct size, then actually storing the indices on a second pass. The matrix is small enough
     // that doubling the runtime won't be noticed on today's monster computers.
-    int j;
-    for(j = 0; j < Nresidues*Nresidues; j++) {
+    for(int j = 0; j < Nresidues*Nresidues; j++) {
       averageEnergies[j] /= (double) totalNumFrames;
     }
     
@@ -162,17 +159,17 @@ int main (int argc, char *argv[])
     if(MPI_Bcast(averageEnergies, Nresidues*Nresidues, MPI_DOUBLE, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting averageEnergies matrix");
     
-    int res_i, res_j, numPairs = 0;
-    for(res_i = 0; res_i < Nresidues; res_i++) {
-      for(res_j = 0; res_j < (res_i-1); res_j++) {
+    int numPairs = 0;
+    for(int res_i = 0; res_i < Nresidues; res_i++) {
+      for(int res_j = 0; res_j < (res_i-1); res_j++) {
         if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF)
           numPairs++;
       }
     }
     
     int *pairsList = malloc(2*numPairs*sizeof(int)), ptr = 0;
-    for(res_i = 0; res_i < Nresidues; res_i++) {
-      for(res_j = 0; res_j < (res_i-1); res_j++) {
+    for(int res_i = 0; res_i < Nresidues; res_i++) {
+      for(int res_j = 0; res_j < (res_i-1); res_j++) {
         if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF) {
           pairsList[ptr] = res_i;
           pairsList[ptr+1] = res_j;
@@ -195,9 +192,8 @@ int main (int argc, char *argv[])
     int *rowsToCalculate = malloc(NumNodes * sizeof(int));
     int *localSizes = malloc(NumNodes * sizeof(int));
     rowsToCalculate[0] = 0; // Start calculating at row 0
-    int node;
     // Can't just naively divide - have to take into account the shape of the share we're assigning.    
-    for(node = 1; node < NumNodes; node++) {
+    for(int node = 1; node < NumNodes; node++) {
       rowsToCalculate[node] = (int) sqrt(((double)node * (double)numPairs * (double)numPairs) / (double)(NumNodes-1));
       // int localSize = (ij_b-ij_a) * ij_b;
       localSizes[node] = (rowsToCalculate[node] - rowsToCalculate[node-1]) * rowsToCalculate[node];
@@ -207,8 +203,8 @@ int main (int argc, char *argv[])
     if(MPI_Bcast(rowsToCalculate, NumNodes, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting rowsToCalculate");
     
-    int fileIdx, keepGoing;
-    for(fileIdx = 2; fileIdx < argc; fileIdx++) {
+    int keepGoing;
+    for(int fileIdx = 2; fileIdx < argc; fileIdx++) {
       size_t numFrames = numFramesInFile(argv[fileIdx], Nresidues);
       // numFrames = 50; // DEBUG
       FILE *fp = fopen(argv[fileIdx], "r");
@@ -269,16 +265,16 @@ int main (int argc, char *argv[])
     // Also: Assemble num and denom from the pieces we just received
     double *num = malloc(numPairs*numPairs*sizeof(double));
     double *denom = malloc(numPairs*numPairs*sizeof(double));
-    for(node = 1; node < NumNodes; node++) {
+    for(int node = 1; node < NumNodes; node++) {
       double *numLocal = malloc(sizeof(double) * localSizes[node]);
       double *denomLocal = malloc(sizeof(double) * localSizes[node]);
       MPI_Recv(numLocal, localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       MPI_Recv(denomLocal, localSizes[node], MPI_DOUBLE, node, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       // M[numPairs*ij+kl] <- M'[ij_b*m+kl] where m = ij-ij_a
-      size_t ij, kl, ij_a = rowsToCalculate[node-1], ij_b = rowsToCalculate[node];
-      for(ij = ij_a; ij < ij_b; ij++) {
+      size_t ij_a = rowsToCalculate[node-1], ij_b = rowsToCalculate[node];
+      for(size_t ij = ij_a; ij < ij_b; ij++) {
         size_t m = ij-ij_a; // "local" row index
-        for(kl = 0; kl < ij; kl++) {
+        for(size_t kl = 0; kl < ij; kl++) {
           size_t offs = ij_b*m+kl;
           num[numPairs*ij+kl] = num[numPairs*kl+ij] = numLocal[offs];
           denom[numPairs*ij+kl] = denom[numPairs*kl+ij] = denomLocal[offs];
@@ -291,7 +287,7 @@ int main (int argc, char *argv[])
     // Now that we've reassembled num and denom, divide them to give final correlation matrix.
     // This can be floats because we're just going to dump it to a file, and we want to save memory.
     float *correl = (float*) malloc(numPairs*numPairs*sizeof(float));
-    for(i = 0; i < (numPairs*numPairs); i++)
+    for(int i = 0; i < (numPairs*numPairs); i++)
       correl[i] = (float)(num[i]/denom[i]);
       
     // Apply correlation cutoff as in Kong and Karplus.
@@ -375,14 +371,12 @@ int main (int argc, char *argv[])
       MPI_Bcast(pairsEnergies, thisBlockSize*numPairs, MPI_FLOAT, 0, MPI_COMM_WORLD);
     
       // Actually do the calculation.
-      int ij, kl;
-      for(ij = ij_a; ij < ij_b; ij++) {
+      for(int ij = ij_a; ij < ij_b; ij++) {
         int m = ij-ij_a; // "local" row index
         int i = pairsList[ij*2], j = pairsList[ij*2+1];
-        for(kl = 0; kl < ij; kl++) {
+        for(int kl = 0; kl < ij; kl++) {
           int k = pairsList[kl*2], l = pairsList[kl*2+1];
-          int t;
-          for(t = 0; t < thisBlockSize; t++) {
+          for(int t = 0; t < thisBlockSize; t++) {
             double a = (double) pairsEnergies[thisBlockSize*ij+t] - averageEnergies[Nresidues*i+j];
             double b = (double) pairsEnergies[thisBlockSize*kl+t] - averageEnergies[Nresidues*k+l];
             // If we had the entire num and denom matrices, we could just do
