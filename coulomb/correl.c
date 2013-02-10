@@ -330,8 +330,8 @@ int main (int argc, char *argv[])
 
     dumpIntMatrixToFile("pairs.txt", prunedPairsList, prunedCount, 2);
     printf("Dumped pruned list of residue pairs to pairs.txt (those that met the correlation cutoff of %.1f).\n", CORREL_CUTOFF);
-    // dumpFloatMatrixToFile("correl.txt", prunedCorrel, prunedCount, prunedCount);
-    // printf("Dumped pruned pairs correlation matrix to correl.txt.\n");
+    dumpFloatMatrixToFile("correl.txt", prunedCorrel, prunedCount, prunedCount);
+    printf("Dumped pruned pairs correlation matrix to correl.txt.\n");
     
   } else {
     // We are a worker node. Our mission is to serve.
