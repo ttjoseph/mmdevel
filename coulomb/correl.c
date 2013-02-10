@@ -5,16 +5,16 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <getopt.h>
 #include <mpi.h>
 
-#define ENERGY_CUTOFF 1.0
-#define CORREL_CUTOFF 0.4
 #define FRAME_BATCH_SIZE 500
 #define MAX_HOSTNAME_LENGTH 1024
 
 char Hostname[MAX_HOSTNAME_LENGTH];
 int Rank, NumNodes;
 int Nresidues;
+double EnergyCutoff = 1.0, CorrelCutoff = 0.4;
 
 void bomb(char *msg) {
   printf("[%d:%s] ERROR, aborting! %s\n", Rank, Hostname, msg);
@@ -102,13 +102,29 @@ int main (int argc, char *argv[])
     
     // Usage: <num-residues> <md.ene.bin.0> [md.ene.bin.1] [...]
     if(argc < 3) {
-      printf("Usage: <num-residues> <md.ene.bin.0> [md.ene.bin.1] [...]\n");
+      printf("Usage: [-e <energy-cutoff>] [-c <correl-cutoff>] <num-residues> <md.ene.bin.0> [md.ene.bin.1] [...]\n");
+      printf("\nDefault value of energy-cutoff is %.1f.\n", EnergyCutoff);
+      printf("\nDefault value of correl-cutoff is %.1f.\n", CorrelCutoff);
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
     
-    Nresidues = atoi(argv[1]);
-    printf("You said there are %d residues. I hope that's correct.\nUsing energy cutoff of %.1f kcal/mol and correlation cutoff of %.1f.\n", Nresidues, ENERGY_CUTOFF, CORREL_CUTOFF);
+    int opt;
+    // Parse command-line flags
+    while((opt = getopt(argc, argv, "e:c:")) != -1) {
+      switch(opt) {
+      case 'e':
+        EnergyCutoff = atof(optarg);
+        break;
+      case 'c':
+        CorrelCutoff = atof(optarg);
+        break;
+      }
+    }
+    
+    Nresidues = atoi(argv[optind]);
+    printf("You said there are %d residues. I hope that's correct.\nUsing energy cutoff of %.1f kcal/mol and correlation cutoff of %.1f.\n",
+      Nresidues, EnergyCutoff, CorrelCutoff);
     if(MPI_Bcast(&Nresidues, 1, MPI_INT, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
       bomb("Broadcasting number of residues");
       
@@ -119,7 +135,7 @@ int main (int argc, char *argv[])
     
     int totalNumFrames = 0;
     float *buf = malloc(Nresidues*Nresidues*sizeof(float));
-    for(int i = 2; i < argc; i++) {
+    for(int i = optind+1; i < argc; i++) {
       int numFrames = numFramesInFile(argv[i], Nresidues);
       printf("Calculating average matrix: %s with %d frames...\n", argv[i], numFrames);
       FILE *fp = fopen(argv[i], "r");
@@ -162,7 +178,7 @@ int main (int argc, char *argv[])
     int numPairs = 0;
     for(int res_i = 0; res_i < Nresidues; res_i++) {
       for(int res_j = 0; res_j < (res_i-1); res_j++) {
-        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF)
+        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= EnergyCutoff)
           numPairs++;
       }
     }
@@ -170,7 +186,7 @@ int main (int argc, char *argv[])
     int *pairsList = malloc(2*numPairs*sizeof(int)), ptr = 0;
     for(int res_i = 0; res_i < Nresidues; res_i++) {
       for(int res_j = 0; res_j < (res_i-1); res_j++) {
-        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= ENERGY_CUTOFF) {
+        if(fabs(averageEnergies[Nresidues*res_i+res_j]) >= EnergyCutoff) {
           pairsList[ptr] = res_i;
           pairsList[ptr+1] = res_j;
           ptr+=2;
@@ -178,7 +194,7 @@ int main (int argc, char *argv[])
       }
     }
     
-    printf("Found %d pairs above cutoff of %.1f kcal/mol.\n", numPairs, ENERGY_CUTOFF);
+    printf("Found %d pairs above cutoff of %.1f kcal/mol.\n", numPairs, EnergyCutoff);
     
     // OK! Now we have the pairs list. Now to calculate the correlation matrix (numPairs*numPairs).
     
@@ -204,7 +220,7 @@ int main (int argc, char *argv[])
       bomb("Broadcasting rowsToCalculate");
     
     int keepGoing;
-    for(int fileIdx = 2; fileIdx < argc; fileIdx++) {
+    for(int fileIdx = optind+1; fileIdx < argc; fileIdx++) {
       size_t numFrames = numFramesInFile(argv[fileIdx], Nresidues);
       // numFrames = 50; // DEBUG
       FILE *fp = fopen(argv[fileIdx], "r");
@@ -299,7 +315,7 @@ int main (int argc, char *argv[])
       for(int kl = 0; kl < numPairs; kl++) {
         // If there is a correl value above the cutoff, this row/column is good so
         // save this index and move on to the next row immediately
-        if(ij != kl && fabs(correl[numPairs*ij+kl]) > CORREL_CUTOFF) {
+        if(ij != kl && fabs(correl[numPairs*ij+kl]) > CorrelCutoff) {
           savedPairIDs[prunedCount++] = ij;
           break;
         }
@@ -329,7 +345,7 @@ int main (int argc, char *argv[])
     // printf("Dumped unpruned pairs correlation matrix to orig-correl.txt.\n");
 
     dumpIntMatrixToFile("pairs.txt", prunedPairsList, prunedCount, 2);
-    printf("Dumped pruned list of residue pairs to pairs.txt (those that met the correlation cutoff of %.1f).\n", CORREL_CUTOFF);
+    printf("Dumped pruned list of residue pairs to pairs.txt (those that met the correlation cutoff of %.1f).\n", CorrelCutoff);
     dumpFloatMatrixToFile("correl.txt", prunedCorrel, prunedCount, prunedCount);
     printf("Dumped pruned pairs correlation matrix to correl.txt.\n");
     
