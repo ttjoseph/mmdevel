@@ -81,7 +81,7 @@ float *LJ6_14; int NumLJ6_14;
 float *Charges; int NumCharges;
 uint8_t *BondType; int NumBondType;
 int *ResidueMap, NumResidueMap;
-int CharmmMode = 0;
+int CharmmMode = 0, FramesToSkip = 0, FramesToProcess = -1;
 // In the general neighborhood of the dielectric constant of a folded protein
 double DielectricConstant = 4.0;
 
@@ -217,6 +217,28 @@ int checksum(char *data, int len) {
   return foo;
 }
 
+// Load a frame from the trajectory file. 10 reals per line, 8 chars per real
+int loadMdcrdFrame(gzFile *trj, int linesPerFrame, int hasBox, float *requestBuf) {
+  int idx = 1, finished = 0;
+  char line[256];
+  
+  for(int i = 0; i < linesPerFrame; i++) {
+    char *ret = gzgets(trj, line, 256);
+    if(ret == NULL) {
+      // No frames left, so stop
+      finished = 1;
+      break;
+    }
+    int len = strlen(line);
+    for(int j = 0; j < len-1; j+=8) {
+      requestBuf[idx] = (float) strtod(line+j, NULL);
+      idx++;
+    }
+  }
+  if(hasBox) gzgets(trj, line, 256); // Eat box info
+  return finished;
+}
+
 int main (int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
@@ -228,11 +250,13 @@ int main (int argc, char *argv[]) {
     printf("Running on %d nodes.\n", NumNodes);
     
     if(argc < 4) {
-      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [-bnc] [d <number>]\n");
+      printf("Usage: <solute.top.tom> <md.trj.gz> <md.ene.bin> [-bncsl] [-d <number>]\n");
       printf("  -b: Force reading of box information from mdcrd\n");
       printf("  -n: Don't read box information from mdcrd\n");
       printf("  -c: Use CHARMM mode (e.g. solute.top.tom was created from CHARMM PSF)\n");
       printf("  -d: Specify dielectric constant\n");
+      printf("  -f: Frames to skip at beginning (default: 0)\n");
+      printf("  -l: Number of frames to process (default: all of them)\n");
       printf("\nDielectric screening curve grows sigmoidally by distance; default %.1f.\n",
         DielectricConstant);
       printf("Using -b or -n will override what the solute.top.tom file says.\n");
@@ -244,7 +268,7 @@ int main (int argc, char *argv[]) {
     int hasBox = -1;
     int opt;
     // Parse command-line flags
-    while((opt = getopt(argc, argv, "bcnd:")) != -1) {
+    while((opt = getopt(argc, argv, "bcnd:s:l:")) != -1) {
       switch(opt) {
       case 'b':
         hasBox = 1;
@@ -258,7 +282,19 @@ int main (int argc, char *argv[]) {
       case 'd':
         DielectricConstant = atof(optarg);
         break;
+      case 's':
+        FramesToSkip = atoi(optarg);
+        break;
+      case 'l':
+        FramesToProcess = atoi(optarg);
+        break;
       }
+    }
+    
+    if(FramesToProcess < (NumNodes-1)) {
+      printf("Due to my laziness with using MPI, you cannot have more worker nodes than\n");
+      printf("frames to process: you specified only %d frames for %d workers.\n", FramesToProcess, NumNodes-1);
+      return 1;
     }
     
     FILE *fp = fopen(argv[optind], "r");
@@ -313,8 +349,8 @@ int main (int argc, char *argv[]) {
     
     // Open the trajectory file
     gzFile trj = gzopen(argv[optind+1], "r");
-    char line[256];
     // Eat header line
+    char line[256];
     gzgets(trj, line, 256);
     
     // Open the md.ene.bin file - for writing raw decomposition matrices
@@ -346,40 +382,34 @@ int main (int argc, char *argv[]) {
     MPI_Request requests[NumNodes-1];
     memset(requests, 0, sizeof(MPI_Request) * (NumNodes-1));
     
-    int numFramesDone = 0, finished = 0, occupiedCount = 0;
+    int numFramesDone = 0, numFramesSent = 0, finished = 0, occupiedCount = 0;
+
+    if(FramesToSkip > 0) {
+      for(int i = 0; i < FramesToSkip; i++) loadMdcrdFrame(trj, linesPerFrame, hasBox, requestBuf[0]);
+      printf("Discarded %d frames at the start of the mdcrd file.\n", FramesToSkip);
+    }
     
     for(;;) {
       // Assign work to any unassigned nodes
       for(int node = 0; node < (NumNodes-1); node++) {
         if(!occupied[node]) {
-          // Load a frame from the trajectory file. 10 reals per line, 8 chars per real
-          int idx = 1;
-          for(int i = 0; i < linesPerFrame; i++) {
-            char *ret = gzgets(trj, line, 256);
-            if(ret == NULL) {
-              // No frames left, so stop
-              finished = 1;
-              break;
-            }
-            int len = strlen(line);
-            for(int j = 0; j < len-1; j+=8) {
-              requestBuf[node][idx] = (float) strtod(line+j, NULL);
-              idx++;
-            }
-          }
-          if(finished) break; // Stop trying to assign more work
-          if(hasBox) gzgets(trj, line, 256); // Eat box info
+          finished = loadMdcrdFrame(trj, linesPerFrame, hasBox, requestBuf[node]);
+          if(finished) break;
           occupied[node] = 1; // Mark that node as occupied
           occupiedCount++;
-          // requestBuf[node][0] = 0.0f;
+          requestBuf[node][0] = 0.0f; // Setting this to 1.0 tells the worker node to quit instead of process the frame
           if(MPI_Send(requestBuf[node], Natoms*3+1, MPI_FLOAT, node+1, 0, MPI_COMM_WORLD) != MPI_SUCCESS)
             bomb("MPI_Send assigning a request");
           if(MPI_Irecv(resultBuf[node], Nresidues*Nresidues, MPI_DOUBLE, node+1, 0, MPI_COMM_WORLD, &requests[node]) != MPI_SUCCESS)
             bomb("MPI_Irecv receving results of a request");
+          if(++numFramesSent >= FramesToProcess && FramesToProcess > 0) {
+            finished = 1;
+            break;
+          }
         } // if !occupied[node]
         
       } // for(nodes)
-    
+
       int index, waitFor = 1;
       // Collect results from all occupied nodes if we're finished
       if(finished) {
@@ -436,7 +466,7 @@ int main (int argc, char *argv[]) {
       // printf("[%d] Received request.\n", Rank);
       // If we are done, quit. Else, process and send results back; repeat.
       if(requestBuf[0] != 0.0f) {
-        printf("[%d] I was told to quit, so see ya!\n", Rank);
+        // printf("[%d] I was told to quit, so see ya!\n", Rank);
         break;
       }
       float *coords = requestBuf+1;
