@@ -291,7 +291,7 @@ int main (int argc, char *argv[]) {
       }
     }
     
-    if(FramesToProcess < (NumNodes-1)) {
+    if(FramesToProcess >= 0 && FramesToProcess < (NumNodes-1)) {
       printf("Due to my laziness with using MPI, you cannot have more worker nodes than\n");
       printf("frames to process: you specified only %d frames for %d workers.\n", FramesToProcess, NumNodes-1);
       return 1;
