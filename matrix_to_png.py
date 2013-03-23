@@ -14,7 +14,8 @@ if len(sys.argv) < 3:
 
 f = open(sys.argv[1])
 lines = f.readlines()
-max_val = float(lines[0][0])
+tmp = lines[0].split();
+max_val = float(tmp[0])
 min_val = max_val
 for i in xrange(len(lines)):
     lines[i] = [float(n) for n in lines[i].split()]
