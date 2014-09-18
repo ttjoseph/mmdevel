@@ -24,7 +24,7 @@ class AtomRecord:
 
 class Molecule:
 
-    solvent_residues = ["WAT", "T3P", "HOH"]
+    solvent_residues = ["WAT", "T3P", "HOH", "PW", "W"]
 
     def __init__(self, filename):
         self.atoms = []
