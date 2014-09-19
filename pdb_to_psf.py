@@ -68,6 +68,5 @@ class Molecule:
 if __name__ == "__main__":
     m = Molecule(sys.argv[1])
     m.nuke_solvent()
-    if len(sys.argv) > 2:
-    m.keep_only_atomname(sys.argv[2])
+    if len(sys.argv) > 2: m.keep_only_atomname(sys.argv[2])
     m.print_as_psf()
