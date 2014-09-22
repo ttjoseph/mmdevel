@@ -1,5 +1,5 @@
 MPICC=mpicc
-CC=icc
+CC=cc
 CFLAGS=-O2 -g -Wall -std=c99
 LDFLAGS=-lz -lm -lpthread
 
