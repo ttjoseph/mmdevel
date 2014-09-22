@@ -83,6 +83,7 @@ psf.readline()
 
 # !NATOM block contains, for each atom, its type and charge, as well as residue assignment
 (num_atoms, kind) = get_psf_block_header(psf)
+print "Number of atoms: %d" % num_atoms
 residue_map = []
 charges = []
 atom_types = []
@@ -115,7 +116,8 @@ for index in xrange(num_atoms):
     atom_types.append(atomtype)
 
     # Are we in a new residue? If so, increment the residue count
-    if last_resid != resid or last_segment != segment: num_residues += 1
+    if last_resid != resid or last_segment != segment:
+        num_residues += 1
     last_resid, last_segment = resid, segment
     
     if found_end_of_solute is False and resname == "TIP3":
@@ -129,6 +131,10 @@ for index in xrange(num_atoms):
         residue_map.append(num_residues - 1)
 
 psf.readline() # Blank line
+print "%d residues?" % num_residues
+
+if found_end_of_solute is False:
+    num_solute_residues = num_residues
 
 # Read in the various bonds.
 # !NBOND - 4 per line (8 numbers)
@@ -158,7 +164,8 @@ if len(bonds)%2 != 0 or len(angles)%3 != 0:
 # Generate list of distinct atom types
 the_types = list(set(atom_types))
 num_atom_types = len(the_types)
-print "There are %d distinct atom types." % len(the_types)
+print "There are %d distinct atom types in the PSF." % len(the_types)
+print "These are:", the_types
 # num_solute_atoms should be equal to the index of the first solvent atom
 
 # We need to extract the LJ terms from the prm file. Happily, we don't
@@ -174,11 +181,15 @@ prm_type, prm_epsilon, prm_rmin2 = [], [], []
 prm_eps14, prm_rmin214 = [], []
 while True:
     l = prm.readline()
-    if l == "":
-        break # Quit on EOF
+    # Skip continuation line
+    if l.endswith('-'):
+        prm.readline()
+        continue
     l = nuke_comment_re.sub('', l).strip()
-    if l == "": continue
+    if l == "": break # Quit on EOF or blank line
     if l[0:4] == "HBON": break
+    # If the line doesn't start with a space, it's a new section, and we should stop
+    # TODO: What's NBFIX?
     atomtype = ""
     epsilon, rmin2, eps14, rmin214 = None, None, None, None
     try:
@@ -186,6 +197,7 @@ while True:
         eps14 = float(eps14.strip())
         rmin214 = float(rmin214.strip())
     except ValueError:
+        # print l
         (atomtype, dummy, epsilon, rmin2) = l.split()
     epsilon = float(epsilon.strip())
     rmin2 = float(rmin2.strip())
@@ -201,13 +213,16 @@ while True:
 # Array of normal (non 1-4) LJ12 terms - one for each pair of atom types
 # Array of normal LJ6 terms
 nb_indices = [0] * num_atom_types**2
-lj12 = [0] * ((num_atom_types**2 - num_atom_types)/2)
-lj6 = [0] * ((num_atom_types**2 - num_atom_types)/2)
-lj1214 = [0] * ((num_atom_types**2 - num_atom_types)/2)
-lj614 = [0] * ((num_atom_types**2 - num_atom_types)/2)
+# Apparently we need the same atom type to interact with itself for MARTINI, which means
+# the main diagonal of the notional LJ interaction matrix must be present. So we need to
+# have the LJ term arrays big enough for that.
+lj12 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+lj6 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+lj1214 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+lj614 = [0] * ((num_atom_types**2 + num_atom_types)/2)
 counter = 0
 for i in xrange(num_atom_types):
-    for j in xrange(i):
+    for j in xrange(i+1):
         # prm_* variables contain nonbonded paramters for all atom types but
         # we will only store information for those types that occur in the structure
         idx_a = prm_type.index(the_types[i])
