@@ -175,19 +175,21 @@ while l[0:4] != "NONB":
     l = prm.readline().strip()
 if l[-1] == '-': l = prm.readline().strip() # Eat extra nonsense
 
-nuke_comment_re = re.compile('!.*$') # Regexp to get_psf_block_headert rid of comments
+nuke_comment_re = re.compile('!.*$') # Regexp to get rid of comments
 # We assume the HBOND line is the end of the nonbonded parameters
 prm_type, prm_epsilon, prm_rmin2 = [], [], []
 prm_eps14, prm_rmin214 = [], []
+
 while True:
     l = prm.readline()
+    if l == "": break # EOF
     # Skip continuation line
-    if l.endswith('-'):
+    if l.strip().endswith('-'):
         prm.readline()
         continue
     l = nuke_comment_re.sub('', l).strip()
-    if l == "": break # Quit on EOF or blank line
-    if l[0:4] == "HBON": break
+    if l == "": continue
+    if l[0:4] == "HBON" or l[0:4] == "NBFI": break
     # If the line doesn't start with a space, it's a new section, and we should stop
     # TODO: What's NBFIX?
     atomtype = ""
