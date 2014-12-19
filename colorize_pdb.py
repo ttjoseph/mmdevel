@@ -1,5 +1,6 @@
 from AMBER import *
 import sys
+import argparse
 
 class AtomRecord:
     '''Represents a single atom.'''
@@ -55,15 +56,21 @@ class PDB:
 
 info("colorize_pdb: colorizes a PDB by residue")
 
-if len(sys.argv) < 3:
-    print >>sys.stderr, "Usage: <pdb> <value-filename>"
-    sys.exit()
+parser = argparse.ArgumentParser()
+parser.add_argument('pdb', help='PDB file to colorize')
+parser.add_argument('value_file', help='At least one file of whitespace-separated numerical values - one output PDB will be generated per line', nargs='+', type=argparse.FileType('r'))
+parser.add_argument('-n', '--normalization-value', help='Normalization value (all values are divided by this number)', type=float, default=50.0) 
+args = parser.parse_args()
 
-pdb = PDB(sys.argv[1])
+pdb = PDB(args.pdb)
 pdb.nuke_solvent()
+info("Dividing all values by %.1f" % args.normalization_value)
 
+lines = []
+for f in args.value_file:
+    lines.extend(f.readlines())
 
-for line in open(sys.argv[2]):
+for line in lines:
     try:
         values = [float(x) for x in line.split()]
     except ValueError:
@@ -72,14 +79,17 @@ for line in open(sys.argv[2]):
 
     # Color the PDB by residue using occupancy and tempfactor fields
     # Fills in missing values with zero
+    # We use a "virtual resid" because the resid might not start from 1, or be
+    # contiguous, or make any sense at all.
+    virtual_resid, last_resid = 0, pdb.atoms[0].resid
     for atom in pdb.atoms:
+        if last_resid != atom.resid: virtual_resid += 1
+        last_resid = atom.resid
         try:
-            val = values[atom.resid - 1]
+            val = values[virtual_resid]
         except IndexError:
             val = 0
-        # if val > 5: val = 5
-        # if val < -1: val = -5
-        # val /= len(pdb.atoms); # BS normalization factor
+        val /= args.normalization_value
         atom.occupancy = atom.tempfactor = round(val, 2)
 
     pdb.write(sys.stdout)
