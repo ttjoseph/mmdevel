@@ -59,12 +59,12 @@ info("colorize_pdb: colorizes a PDB by residue")
 parser = argparse.ArgumentParser()
 parser.add_argument('pdb', help='PDB file to colorize')
 parser.add_argument('value_file', help='At least one file of whitespace-separated numerical values - one output PDB will be generated per line', nargs='+', type=argparse.FileType('r'))
-parser.add_argument('-n', '--normalization-value', help='Normalization value (all values are divided by this number)', type=float, default=50.0) 
+parser.add_argument('-n', '--normalization-factor', help='Normalization factor (all values are multiplied by this number)', type=float, default=1.0) 
 args = parser.parse_args()
 
 pdb = PDB(args.pdb)
 pdb.nuke_solvent()
-info("Dividing all values by %.1f" % args.normalization_value)
+info("Multiplying all values by %.1f" % args.normalization_factor)
 
 lines = []
 for f in args.value_file:
@@ -89,7 +89,7 @@ for line in lines:
             val = values[virtual_resid]
         except IndexError:
             val = 0
-        val /= args.normalization_value
+        val *= args.normalization_factor
         atom.occupancy = atom.tempfactor = round(val, 2)
 
     pdb.write(sys.stdout)
