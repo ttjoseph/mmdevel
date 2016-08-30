@@ -7,8 +7,9 @@ from multiprocessing import Pool
 import tempfile
 import sys
 from os import fdopen, unlink, getcwd
-from os.path import abspath, dirname
+from os.path import abspath, dirname, basename, splitext
 import subprocess
+from base64 import b64encode
 import yaml
 import MDAnalysis as mda
 from MDAnalysis.core.topologyobjects import Dihedral
@@ -74,7 +75,7 @@ def get_energy_from_namd_log(namdlog, energy_type='TOTAL'):
     for line in namdlog.split('\n'):
         tokens = line.split()
         if len(tokens) == 0: continue
-        if tokens[0] == 'ETITLE:': energy_index = tokens.index(energy_type)   
+        if tokens[0] == 'ETITLE:': energy_index = tokens.index(energy_type)
         # if tokens[0] == 'ETITLE:': print(line)
         if tokens[0] == 'ENERGY:': energy = float(tokens[energy_index])
         # if tokens[0] == 'ENERGY:' and tokens[1] == '1000': print(line)
@@ -82,11 +83,14 @@ def get_energy_from_namd_log(namdlog, energy_type='TOTAL'):
     return energy
 
 
-def calc_one_mm_energy(data):
+def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     # Load template PDB
     pdb = PDB(data['pdb'])
-    outputname = 'Dihedral_' + '_'.join([str(x) for x in data['indices']]) + '_' + str(data['dihedral_angle'])
-    
+
+    # Pick a unique temporary file name
+    outputname = 'Dihedral_' + '_'.join([str(x) for x in data['indices']]) + '_' + str(data['dihedral_angle']) + \
+                 '_' + str(data['index'])
+
     # Replace coordinates with the supplied ones and write out a new (temporary) PDB
     coords = data['coords']
     for i in range(len(pdb.atoms)):
@@ -94,18 +98,17 @@ def calc_one_mm_energy(data):
         pdb.atoms[i].y = coords[i][1]
         pdb.atoms[i].z = coords[i][2]
     pdb_fname = '%s.initial.pdb' % outputname
-    pdb_fp = open(pdb_fname, 'w')   
+    pdb_fp = open(pdb_fname, 'w')
     pdb.write(pdb_fp)
     pdb_fp.close()
-    
-    # Extrabonds file is used to zero out the dihedrals we are fitting
+
+    # Extrabonds file contains the dihedrals we are fitting with very high force constants.
+    # This holds those dihedrals tatic and forces the MM relaxation to happen around them.
     # To do this, we need to associate atom types to atom indices, perhaps with the help of MDAnalysis
     u = mda.Universe(data['psf'], pdb_fname)
     dihedral_atomtypes = []
     for i in data['indices']: dihedral_atomtypes.append(u.atoms[i].type)
     data['dihedral_atomtypes'] = dihedral_atomtypes
-    # DEBUG
-    pdb.write(open('%s.initial.pdb' % outputname, 'w'))
 
     # Construct parameters block
     prm_string = ''
@@ -117,13 +120,19 @@ def calc_one_mm_energy(data):
     zero_prm_fp = open(zero_prm_fname, 'w')
     extrabonds_fname = '%s.extrabonds.txt' % outputname
     extrabonds_fp = open(extrabonds_fname, 'w')
-    
+
     zero_prm_fp.write('BONDS\nANGLES\nDIHEDRAL\n')
     for indices in data['all_dihedrals_to_be_fit']:
         names = []
         for i in data['indices']: names.append(u.atoms[i].type)
-        #for multiplicity in (1, 2, 3, 4, 6):
-        #    zero_prm_fp.write('%s 0.0 %d 0.0\n' % (' '.join(names), multiplicity))
+        # We may want to calculate the relaxed molecular mechanics energy without contributions
+        # from the dihedrals we are trying to optimize. In this case we could calculate
+        # those separately and add them to the total energies. However in this case one
+        # might expect the relaxed MM conformations to be slightly different from the 'real'
+        # relaxed MM conformations with all energy terms included.
+        if ignore_our_dihedrals:
+            for multiplicity in (1, 2, 3, 4, 6):
+                zero_prm_fp.write('%s 0.0 %d 0.0\n' % (' '.join(names), multiplicity))
         # Measure the dihedral angle for this dihedral, and put an entry in
         # extrabonds.txt that fixes that dihedral in place using a very high force constant
         these_atoms = [u.atoms[i] for i in indices]
@@ -135,11 +144,8 @@ def calc_one_mm_energy(data):
     zero_prm_fp.close()
     extrabonds_fp.close()
     prm_string += 'parameters %s\n' % (zero_prm_fname)
-
-    extrabonds_string = ''
-    # Write stuff to extrabonds if you want
     extrabonds_string = 'extraBonds yes\nextraBondsFile %s' % extrabonds_fname
-    
+
     # First, we run NAMD to minimize the structure with the dihedrals in question fixed using a large
     # force constant. Then, we run it *again*, with slightly different parameters, to actually calcualte
     # the molecular mechanics energy. On this second run, we don't use an extrabonds.txt because
@@ -180,9 +186,15 @@ run 0
     namdconf_fp.write(namd_conf)
     namdconf_fp.close()
 
-    namd_wd = dirname(abspath(namdconf_fname))   
+    namd_wd = dirname(abspath(namdconf_fname))
     p = subprocess.Popen([data['namd'], namdconf_fname], stdout=subprocess.PIPE, cwd=getcwd())
     (namdlog, namdstderr) = p.communicate()
+
+    # NAMD shouldn't be complaining. If it is, tell the user
+    if namdstderr is not None:
+        print(namdstderr)
+    #DEBUG
+    # if data['index'] in (88, 89): print(namdlog)
 
     # Now run NAMD a second time to calculate a single point energy
     # using the minimized coordinates from the previous NAMD run.
@@ -207,40 +219,47 @@ run 0
             'prm_string': prm_string,
             'pdb_fname': '%s.restart.coor' % outputname,
             'outputname': outputname}
-    
-    namdconf_fname = '%s.namd.energy.conf' % outputname
-    namdconf_fp = open(namdconf_fname, 'w')
+
+    namdconf2_fname = '%s.namd.energy.conf' % outputname
+    namdconf_fp = open(namdconf2_fname, 'w')
     namdconf_fp.write(namd_conf)
     namdconf_fp.close()
-    p = subprocess.Popen([data['namd'], namdconf_fname], stdout=subprocess.PIPE, cwd=getcwd())
+    p = subprocess.Popen([data['namd'], namdconf2_fname], stdout=subprocess.PIPE, cwd=getcwd())
     (namdlog, namdstderr) = p.communicate()
 
+    #DEBUG
+    # if data['index'] in (88, 89): print(namdlog)
+
+    # NAMD shouldn't be complaining. If it is, tell the user
+    if namdstderr is not None:
+        print(namdstderr)
+
     # DEBUG
-    open(outputname + '.namd2.log', 'w').write(namdlog)
-    
+    # open(outputname + '.namd2.log', 'w').write(namdlog)
+
     # TODO: Harvest the dihedral angles we are trying to fit
     data['mm_energy'] = get_energy_from_namd_log(namdlog, 'TOTAL')
     print('%s at %.1f deg: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (' '.join(dihedral_atomtypes),
-                data['dihedral_angle'], 
-                data['mm_energy'], 
+                data['dihedral_angle'],
+                data['mm_energy'],
                 data['qm_energy']))
 
 
     # Delete a file without caring whether it succeeds, such as if the file didn't exist in the first place
     def unlink_dontcare(fname):
         try:
-            # unlink(fname)
-            pass # DEBUG
+            #DEBUG
+            # if data['index'] not in (89, 90):
+            unlink(fname)
         except:
             pass # YOLO
 
     # Remove the temporary files we made
-    for fname in (pdb_fname, extrabonds_fname, namdconf_fname):
+    for fname in (pdb_fname, extrabonds_fname, namdconf_fname, namdconf2_fname):
         unlink_dontcare(fname)
 
     # Remove NAMD output that we don't care about
-    # The try/except blocks don't do anything because we don't care about failure
-    for suffix in ('.coor', '.vel', '.xsc'):
+    for suffix in ('.coor', '.vel', '.xsc', '.zero.prm'):
         for suffix2 in ('', '.old', '.BAK'):
             unlink_dontcare('%s/%s%s%s' % (namd_wd, outputname, suffix, suffix2))
             unlink_dontcare('%s/%s.restart%s%s' % (namd_wd, outputname, suffix, suffix2))
@@ -260,6 +279,7 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
         if d['indices'] not in all_dihedrals_to_be_fit:
             all_dihedrals_to_be_fit.append(d['indices'])
 
+    print('Atom indices of dihedrals to be fit:')
     print(all_dihedrals_to_be_fit)
 
     data = []
@@ -311,7 +331,9 @@ def parse_gaussian_dihedral_scan_log(fname):
     while i < len(lines):
         # This signifies the start of a single point in the scan
         if re.search(r'Initial Parameters', lines[i]):
-            # Chug along until we find the dihedral indices in question
+            # Chug along until we find the dihedral indices in question.
+            # Importantly, we assume that only one dihedral is being scanned.
+            # This will break in the case of a 2D scan.
             while get_token(lines[i], 4) != 'Scan': i += 1
             # ! D8    D(1,2,3,8)            177.9793         Scan
             # Use a horrifying regex to extract the dihedral indices
@@ -345,6 +367,7 @@ def parse_gaussian_dihedral_scan_log(fname):
             while get_token(lines[i], 2) != indices_string: i += 1
             dihedral_angle = float(get_token(lines[i], 3))
             dihedral_results.append({'indices': indices,
+                                     'gaussian_log_filename': fname,
                                      'dihedral_angle': dihedral_angle,
                                      'qm_energy': current_energy,
                                      'coords': coords})
@@ -353,8 +376,20 @@ def parse_gaussian_dihedral_scan_log(fname):
     return dihedral_results
 
 
+def generate_data_uri_download(fname):
+    """Generate HTML that provides a download link for a file, where the file content
+    is embedded as a data URI."""
+    pretty_fname = basename(fname)
+    with open(fname) as f:
+        payload = b64encode(f.read())
+        return '<a download="%s" href="data:text/plain;base64,%s">%s</a>' % (pretty_fname, payload, pretty_fname)
+
+
 def results_to_html(data, fname='results.html'):
     f = open(fname, 'w')
+    print('Writing HTML output to %s.' % fname)
+
+    output = {}
 
     qm_energy, mm_energy, x_vals = [], [], []
     for x in range(len(data)):
@@ -362,17 +397,25 @@ def results_to_html(data, fname='results.html'):
         qm_energy.append(data[x]['qm_energy'])
         mm_energy.append(data[x]['mm_energy'])
 
-    qm_energy_str = 'x: %s, y: %s' % (x_vals, qm_energy)
-    mm_energy_str = 'x: %s, y: %s' % (x_vals, mm_energy)
-    
+    output['qm_energy_str'] = 'x: %s, y: %s' % (x_vals, qm_energy)
+    output['mm_energy_str'] = 'x: %s, y: %s' % (x_vals, mm_energy)
+
     frame_info_str = """<table class='table table-condensed table-hover table-striped'>
-    <tr><th>Frame</th><th>Dihedral being scanned</th><th>Atom indices of that dihedral</th><th>Angle (degrees)</th></tr>"""
+    <tr><th>Frame</th><th>Gaussian log</th><th>Dihedral being scanned</th><th>Atom indices of that dihedral</th>
+    <th>Angle (degrees)</th></tr>"""
     for i in range(len(data)):
         d = data[i]
-        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%.2f</td></tr>' % (
-            i, ' '.join(d['dihedral_atomtypes']), d['indices'], d['dihedral_angle'])
+        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%.2f</td></tr>' % (
+            i, basename(d['gaussian_log_filename']), ' '.join(d['dihedral_atomtypes']), d['indices'],
+            d['dihedral_angle'])
     frame_info_str += "</table>"
+    output['frame_info_str'] = frame_info_str
 
+    output['psf'] = data[0]['psf']
+    output['pdb'] = data[0]['pdb']
+    download_files = [output['psf'], output['pdb']]
+    download_files.extend(data[0]['prms'])
+    output['download_str'] = ' &sdot; '.join(map(generate_data_uri_download, download_files))
     f.write(
 """<html><head>
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
@@ -380,39 +423,58 @@ def results_to_html(data, fname='results.html'):
 <script src="https://code.jquery.com/jquery-3.1.0.slim.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-1.2.0.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
-<title>Dihedral energy surface</title>
+<title>Dihedral energy surface for %(psf)s</title>
+<style>
+#info_table {
+  height: 400px;
+  resize: both;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin-bottom: 0.2em;
+}
+
+td {
+    font-size: 75%%;
+}
+
+</style>
 </head>
 <body>
-<div class="container">
+<div class="container-fluid">
 <div id="energy_plot" style="width: 100%%; height: 500px;"></div>
-<div id="info_table">%s</div>
+<div id="info_table">%(frame_info_str)s</div>
+Download files: %(download_str)s
 </div>
 <script>
-var qm_energy = { %s, name: 'QM' };
-var mm_energy = { %s, name: 'MM (with dihedrals)' };
+var qm_energy = { %(qm_energy_str)s, name: 'QM' };
+var mm_energy = { %(mm_energy_str)s, name: 'MM (with dihedrals)' };
 var data = [qm_energy, mm_energy];
 
 $(document).ready(function() {
-    var layout = {showlegend: true, legend: {"orientation": "h"},
-        xaxis: {
-            title: 'Frame'
-        },
-        yaxis: {
-            title: 'Energy (kcal/mol)'
-        }
+    var layout = {
+        showlegend: true,
+        legend: {"orientation": "h"},
+        title: 'Dihedral energy surface for %(psf)s',
+        xaxis: { title: 'Frame' },
+        yaxis: { title: 'Energy (kcal/mol)' }
     };
     Plotly.newPlot('energy_plot', data, layout);
+
+    // Enforce minimum height of dihedral info table
+    var newHeight = $(window).height() - $('.info_table').offset().top - 15;
+    if(newHeight < 400) { newHeight = 400; }
+    $('.info_table').height(newHeight);
 });
 
 </script>
 </body>
 </html>
-""" % (frame_info_str, qm_energy_str, mm_energy_str))
+""" % output)
 
     f.close()
 
 
-if __name__ == '__main__':
+def main():
     ap = argparse.ArgumentParser(description='Something with force fields or whatever')
     ap.add_argument('system_yaml')
     ap.add_argument('dihedral_scan_logs', nargs='+')
@@ -430,8 +492,11 @@ if __name__ == '__main__':
 
     # Finally we should be able to make a plot of these energies, and make a table that
     # associates these energies to the actual dihedral angle we varied. Amazing!
-    results_to_html(data)
+    results_to_html(data, '%s.dihedral_energy.html' % splitext(basename(system['psf']))[0])
 
     # End goal here is to be able to dynamically edit the PRM file we are creating
     # for this ligand, and watch the MM energy surface change in relation to the QM
     # energy surface. Should in the end speed up this whole process.
+
+if __name__ == '__main__':
+    main()
