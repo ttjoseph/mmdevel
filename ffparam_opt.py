@@ -10,9 +10,11 @@ from os import fdopen, unlink, getcwd
 from os.path import abspath, dirname, basename, splitext
 import subprocess
 from base64 import b64encode
+import math
 import yaml
 import MDAnalysis as mda
 from MDAnalysis.core.topologyobjects import Dihedral
+from scipy.interpolate import griddata
 
 class AtomRecord:
     '''Represents a single atom.'''
@@ -76,20 +78,23 @@ def get_energy_from_namd_log(namdlog, energy_type='TOTAL'):
         tokens = line.split()
         if len(tokens) == 0: continue
         if tokens[0] == 'ETITLE:': energy_index = tokens.index(energy_type)
-        # if tokens[0] == 'ETITLE:': print(line)
         if tokens[0] == 'ENERGY:': energy = float(tokens[energy_index])
-        # if tokens[0] == 'ENERGY:' and tokens[1] == '1000': print(line)
 
     return energy
 
 
 def calc_one_mm_energy(data, ignore_our_dihedrals=False):
-    # Load template PDB
+    # Load template PDB and its associated PSF
     pdb = PDB(data['pdb'])
 
+    # Make a string representing this data point, for human consumption
+    description = []
+    for key, dihedral in data['dihedrals'].iteritems():
+        description.append(key + '_' + str(dihedral['angle']))
+    description = '_'.join(description)
+
     # Pick a unique temporary file name
-    outputname = 'Dihedral_' + '_'.join([str(x) for x in data['indices']]) + '_' + str(data['dihedral_angle']) + \
-                 '_' + str(data['index'])
+    outputname = 'Dihedral_%s_%d' % (description, data['index'])
 
     # Replace coordinates with the supplied ones and write out a new (temporary) PDB
     coords = data['coords']
@@ -103,12 +108,11 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     pdb_fp.close()
 
     # Extrabonds file contains the dihedrals we are fitting with very high force constants.
-    # This holds those dihedrals tatic and forces the MM relaxation to happen around them.
-    # To do this, we need to associate atom types to atom indices, perhaps with the help of MDAnalysis
+    # This holds those dihedrals static and forces the MM relaxation to happen around them.
+    # To do this, we need to associate atom types to atom indices with the help of MDAnalysis
     u = mda.Universe(data['psf'], pdb_fname)
-    dihedral_atomtypes = []
-    for i in data['indices']: dihedral_atomtypes.append(u.atoms[i].type)
-    data['dihedral_atomtypes'] = dihedral_atomtypes
+    for key, dihedral in data['dihedrals'].iteritems():
+        dihedral['atomtypes'] = [u.atoms[i].type for i in dihedral['indices']]
 
     # Construct parameters block
     prm_string = ''
@@ -122,9 +126,10 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     extrabonds_fp = open(extrabonds_fname, 'w')
 
     zero_prm_fp.write('BONDS\nANGLES\nDIHEDRAL\n')
+    # Iterate over dihedrals
     for indices in data['all_dihedrals_to_be_fit']:
         names = []
-        for i in data['indices']: names.append(u.atoms[i].type)
+        for i in indices: names.append(u.atoms[i].type)
         # We may want to calculate the relaxed molecular mechanics energy without contributions
         # from the dihedrals we are trying to optimize. In this case we could calculate
         # those separately and add them to the total energies. However in this case one
@@ -239,8 +244,7 @@ run 0
 
     # TODO: Harvest the dihedral angles we are trying to fit
     data['mm_energy'] = get_energy_from_namd_log(namdlog, 'TOTAL')
-    print('%s at %.1f deg: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (' '.join(dihedral_atomtypes),
-                data['dihedral_angle'],
+    print('%s: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (outputname,
                 data['mm_energy'],
                 data['qm_energy']))
 
@@ -275,9 +279,11 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
     # We can also run a bunch of NAMDs simultaneously to make this faster.
 
     all_dihedrals_to_be_fit = []
-    for d in dihedral_results:
-        if d['indices'] not in all_dihedrals_to_be_fit:
-            all_dihedrals_to_be_fit.append(d['indices'])
+    for result in dihedral_results:
+        for dihedral_string in result['dihedrals']:
+            dihedral = result['dihedrals'][dihedral_string]
+            if dihedral['indices'] not in all_dihedrals_to_be_fit:
+                all_dihedrals_to_be_fit.append(dihedral['indices'])
 
     print('Atom indices of dihedrals to be fit:')
     print(all_dihedrals_to_be_fit)
@@ -295,16 +301,16 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
         d.update(dihedral_results[i])
         data.append(d)
 
-    p = Pool(12)
+    p = Pool(12) # TODO: Make this a command line parameter but default to number of cores on system
     data = p.map(calc_one_mm_energy, data)
-    #for i in range(len(data)):
-    #    data[i] = calc_one_mm_energy(data[i])
+    # For debugging only - stack trace in Python 2 is ruined by Pool
+    # for i in range(len(data)):
+    #     data[i] = calc_one_mm_energy(data[i])
 
     def shift_zeropoint(data, key):
         smallest = data[0][key]
         for d in data: smallest = d[key] if d[key] < smallest else smallest
         for d in data: d[key] -= smallest
-
 
     shift_zeropoint(data, 'mm_energy')
     shift_zeropoint(data, 'qm_energy')
@@ -312,7 +318,9 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
     return data
 
 def parse_gaussian_dihedral_scan_log(fname):
-    """Parses Gaussian09 dihedral scan log file."""
+    """Parses Gaussian09 dihedral scan log file.
+    
+    Should now allow an arbitrary number of scanned (independently varying) dihedrals."""
 
     KCAL_MOL_PER_HARTREE = 627.5095
 
@@ -323,24 +331,27 @@ def parse_gaussian_dihedral_scan_log(fname):
         else:
             return None
 
+    # Read the entire file at once - these generally aren't that big
     with open(fname) as f:
         lines = f.readlines()
 
     i = 0
-    dihedral_results = []
+    dihedrals_scanned, dihedral_results = dict(), []
+    dihedrals = None
     while i < len(lines):
         # This signifies the start of a single point in the scan
         if re.search(r'Initial Parameters', lines[i]):
-            # Chug along until we find the dihedral indices in question.
-            # Importantly, we assume that only one dihedral is being scanned.
-            # This will break in the case of a 2D scan.
-            while get_token(lines[i], 4) != 'Scan': i += 1
-            # ! D8    D(1,2,3,8)            177.9793         Scan
-            # Use a horrifying regex to extract the dihedral indices
-            indices_string = get_token(lines[i], 2)
-            matched = re.match(r'.\((\d+),(\d+),(\d+),(\d+)\)', indices_string)
-            indices = []
-            for j in range(1, 5): indices.append(int(matched.group(j)) - 1)
+            while lines[i].startswith(' GradGradGrad') is False:
+                # Look for scanned dihedral and save it
+                # ! D8    D(1,2,3,8)            177.9793         Scan
+                if get_token(lines[i], 4) == 'Scan':
+                    indices_string = get_token(lines[i], 2)
+                    matched = re.match(r'.\((\d+),(\d+),(\d+),(\d+)\)', indices_string)
+                    indices = []
+                    for j in range(1, 5):
+                        indices.append(int(matched.group(j)) - 1)
+                    dihedrals_scanned[indices_string] = indices
+                i += 1
 
         if re.search(r'Input orientation:', lines[i]):
             # Save the input coordinates for this piece of the dihedral scan
@@ -353,28 +364,99 @@ def parse_gaussian_dihedral_scan_log(fname):
                 x, y, z = float(x), float(y), float(z)
                 coords.append((x, y, z))
                 i += 1
+            # We need to make a new dihedrals object for every point on the scan,
+            # otherwise Python will keep reusing the same one and bork our results dict
+            dihedrals = dict()
+            for indices_string, indices in dihedrals_scanned.iteritems():
+                dihedrals[indices_string] = {'indices': indices}
 
-        # This and the following blocks extract the current energy for this dihedral
+        # This and the following blocks extract the current energy for this dihedral set
         if re.search(r'SCF[ \t]*Done:', lines[i]):
             current_energy = float(get_token(lines[i], 4)) * KCAL_MOL_PER_HARTREE
 
-        # We deliberately favor MP2 energy over the RHF energy extracted above
+        # We deliberately favor MP2 energy over the RHF or whatever energy extracted above
         if re.search(r'E2.*EUMP2', lines[i]):
             current_energy = float(get_token(lines[i], 5).replace('D', 'E')) * KCAL_MOL_PER_HARTREE
 
+        # Save the result when we get to the final optimized coordinates, which we don't actually save
+        # We also save each dihedral angle
         if re.search(r'Optimization completed\.', lines[i]):
-            # Eat lines until we find the line with our dihedral so we can extract its angle value
-            while get_token(lines[i], 2) != indices_string: i += 1
-            dihedral_angle = float(get_token(lines[i], 3))
-            dihedral_results.append({'indices': indices,
+            while lines[i].startswith(' GradGradGrad') is False:
+                dihedral_string = get_token(lines[i], 2)
+                if dihedral_string in dihedrals:
+                    dihedrals[dihedral_string]['angle'] = float(get_token(lines[i], 3))
+                i += 1
+            
+            dihedral_results.append({'dihedrals': dihedrals,
                                      'gaussian_log_filename': fname,
-                                     'dihedral_angle': dihedral_angle,
                                      'qm_energy': current_energy,
                                      'coords': coords})
 
         i += 1 # Advance line counter
+
     return dihedral_results
 
+
+def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
+    """Generates a CMAP table for the given dihedral, given 2D dihedral scan data.
+    
+    We need to produce a 360x360 grid of energy terms that is [-180, 180) degrees for each dimension.
+    The grid divides each dimension into equally-sized pieces, and we always start at -180 degrees.
+    There is no CMAP "phase shift" to make fitting to the grid easier. And there are the same number
+    of points in both dimensions.
+    
+    But we are only given an energy surface that covers part of the CMAP energy space, and it probably
+    does not align to the preordained grid points. This is because the QM energy surface was
+    probably generated with Gaussian09 Mod=OptRedundant, which does not seem to support pinning to
+    specific dihedral angles.
+    
+    So, we construct the whole source energy grid, leaving the parts that were not sampled zero,
+    then interpolate to map it onto the CMAP grid. The CMAP grid should probably have higher resolution
+    than the QM energy surface, to minimize sampling error.
+    """
+
+    print('! Here is the CMAP table for %s %s' % (dihedral1, dihedral2))
+    coords, values = [], []
+    dihedral1_atomtypes, dihedral2_atomtypes = None, None
+    for d in data:
+        # If this is the dihedral pair in question, add it to our list of source data
+        if dihedral1 in d['dihedrals'] and dihedral2 in d['dihedrals']:
+            d1, d2 = d['dihedrals'][dihedral1], d['dihedrals'][dihedral2]
+            dihedral1_atomtypes = d1['atomtypes']
+            dihedral2_atomtypes = d2['atomtypes']
+            coords.append((d1['angle'], d2['angle']))
+            values.append(d['qm_energy'] - d['mm_energy'])
+    
+    # This is probably a dumb way to do this
+    xi = []
+    for angle1 in range(-180, 180, int(math.floor(360/spacing))):
+        for angle2 in range(-180, 180, int(math.floor(360/spacing))):
+            xi.append((angle1, angle2))
+
+    # We use scipy.interpolate.griddata. This takes coordinates (dihedral angles), values
+    # (energy differences), and xi (CMAP grid coordinates), and returns interpolated values.
+    cmap_raw = griddata(coords, values, xi, fill_value=0.0)
+
+    # Now to spit out the CMAP table so that NAMD/CHARMM will parse it
+    print('%s %s %d' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
+    # Five values per line, why not
+    for i in range(len(cmap_raw)):
+        if i != 0 and i % 5 == 0: sys.stdout.write('\n')
+        sys.stdout.write('   %.6f' % cmap_raw[i])
+    sys.stdout.write('\n')
+
+def make_cmap_terms(data):
+    # Find all dihedral pairs and call make_single_cmap_table on each one.
+    # Importantly, we tolerate the order of the dihedrals in each pair being reversed.
+    # TODO: Does D(1,2,3,4) == D(4,3,2,1)?
+    dihedral_pairs = set()
+    for d in data:
+        dihedral_pairs.add(' '.join(sorted(d['dihedrals'].keys())))
+    
+    for dihedral_pair in dihedral_pairs:
+        dihedrals = dihedral_pair.split()
+        make_single_cmap_table(data, dihedrals[0], dihedrals[1])
+    
 
 def generate_data_uri_download(fname):
     """Generate HTML that provides a download link for a file, where the file content
@@ -388,26 +470,31 @@ def generate_data_uri_download(fname):
 def results_to_html(data, fname='results.html'):
     f = open(fname, 'w')
     print('Writing HTML output to %s.' % fname)
-
-    output = {}
-
     qm_energy, mm_energy, x_vals = [], [], []
     for x in range(len(data)):
-        x_vals.append(x)
+        x_vals.append(data[x]['index'])
         qm_energy.append(data[x]['qm_energy'])
         mm_energy.append(data[x]['mm_energy'])
 
+    output = {}
     output['qm_energy_str'] = 'x: %s, y: %s' % (x_vals, qm_energy)
     output['mm_energy_str'] = 'x: %s, y: %s' % (x_vals, mm_energy)
 
+    # Make a pretty HTML table of what's shown in the plot
     frame_info_str = """<table class='table table-condensed table-hover table-striped'>
-    <tr><th>Frame</th><th>Gaussian log</th><th>Dihedral being scanned</th><th>Atom indices of that dihedral</th>
+    <tr><th>Frame</th><th>Gaussian log</th><th>Dihedral(s) being scanned</th><th>Atom indices</th>
     <th>Angle (degrees)</th></tr>"""
     for i in range(len(data)):
-        d = data[i]
-        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%.2f</td></tr>' % (
-            i, basename(d['gaussian_log_filename']), ' '.join(d['dihedral_atomtypes']), d['indices'],
-            d['dihedral_angle'])
+        indices, atomtypes, angles = [], [], []
+        for key, dihedral in data[i]['dihedrals'].iteritems():
+            indices.append(dihedral['indices'])
+            atomtypes.append(dihedral['atomtypes'])
+            angles.append(dihedral['angle'])
+        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (
+            i, basename(data[i]['gaussian_log_filename']), 
+            ' '.join(['-'.join(a) for a in atomtypes]),
+            ' '.join([str(a) for a in indices]),
+            ' '.join([str(a) for a in angles]))
     frame_info_str += "</table>"
     output['frame_info_str'] = frame_info_str
 
@@ -489,6 +576,8 @@ def main():
 
     # Now we calculate the relaxed MM energy for each of those conformations.
     data = calc_mm_energy(system['psf'], system['pdb'], system['prms'], dihedral_results)
+
+    make_cmap_terms(data)
 
     # Finally we should be able to make a plot of these energies, and make a table that
     # associates these energies to the actual dihedral angle we varied. Amazing!
