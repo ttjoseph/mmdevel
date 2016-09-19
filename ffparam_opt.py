@@ -301,7 +301,7 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
         d.update(dihedral_results[i])
         data.append(d)
 
-    p = Pool(12) # TODO: Make this a command line parameter but default to number of cores on system
+    p = Pool(14) # TODO: Make this a command line parameter but default to number of cores on system
     data = p.map(calc_one_mm_energy, data)
     # For debugging only - stack trace in Python 2 is ruined by Pool
     # for i in range(len(data)):
@@ -435,7 +435,7 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
 
     # We use scipy.interpolate.griddata. This takes coordinates (dihedral angles), values
     # (energy differences), and xi (CMAP grid coordinates), and returns interpolated values.
-    cmap_raw = griddata(coords, values, xi, fill_value=0.0)
+    cmap_raw = griddata(coords, values, xi, method='linear', fill_value=0.0)
 
     # Now to spit out the CMAP table so that NAMD/CHARMM will parse it
     print('%s %s %d' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
@@ -451,7 +451,8 @@ def make_cmap_terms(data):
     # TODO: Does D(1,2,3,4) == D(4,3,2,1)?
     dihedral_pairs = set()
     for d in data:
-        dihedral_pairs.add(' '.join(sorted(d['dihedrals'].keys())))
+        if len(d['dihedrals']) == 2:
+            dihedral_pairs.add(' '.join(sorted(d['dihedrals'].keys())))
     
     for dihedral_pair in dihedral_pairs:
         dihedrals = dihedral_pair.split()
