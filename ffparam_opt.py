@@ -381,11 +381,13 @@ def parse_gaussian_dihedral_scan_log(fname):
         # Save the result when we get to the final optimized coordinates, which we don't actually save
         # We also save each dihedral angle
         if re.search(r'Optimization completed\.', lines[i]):
-            while lines[i].startswith(' GradGradGrad') is False:
+            while lines[i].startswith(' GradGradGrad') is False and lines[i].startswith(' Iteration') is False:
                 dihedral_string = get_token(lines[i], 2)
                 if dihedral_string in dihedrals:
                     dihedrals[dihedral_string]['angle'] = float(get_token(lines[i], 3))
                 i += 1
+                if i >= len(lines):
+                    print('We got problems with %s' % fname)
             
             dihedral_results.append({'dihedrals': dihedrals,
                                      'gaussian_log_filename': fname,
@@ -424,8 +426,12 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
             d1, d2 = d['dihedrals'][dihedral1], d['dihedrals'][dihedral2]
             dihedral1_atomtypes = d1['atomtypes']
             dihedral2_atomtypes = d2['atomtypes']
-            coords.append((d1['angle'], d2['angle']))
-            values.append(d['qm_energy'] - d['mm_energy'])
+            # Use "periodic images" so griddata can interpolate at the edges of the
+            # coordinate space
+            for period1 in (-360, 0, 360):
+                for period2 in (-360, 0, 360):
+                    coords.append((d1['angle'] + period1, d2['angle'] + period2))
+                    values.append(d['qm_energy'] - d['mm_energy'])
     
     # This is probably a dumb way to do this
     xi = []
