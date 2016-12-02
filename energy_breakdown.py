@@ -34,7 +34,7 @@ def load_charmm_ff_params(fname):
 
         tokens = line.split()
         skip_line = False
-        for section in ('ATOM', 'BOND', 'ANGL', 'DIHE', 'IMPR', 'NONB'):
+        for section in ('ATOM', 'BOND', 'ANGL', 'DIHE', 'IMPR', 'NONB', 'CMAP'):
             if tokens[0].startswith(section):
                 current_section = section
                 skip_line = True
