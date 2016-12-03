@@ -92,14 +92,16 @@ def main():
 
     for key in natsorted(all_offsets.keys(), reverse=(last_delta<0)):
         block_info = all_offsets[key]
+        sys.stderr.write('%s from %s: Equil: %d bytes; Prod %d bytes\n' % (key,
+            block_info['fname'],
+            block_info['equil_end_offset'] - block_info['equil_start_offset'],
+            block_info['prod_end_offset'] - block_info['prod_start_offset']))
         sys.stdout.write(get_block_from_file(block_info['fname'],
             block_info['equil_start_offset'],
             block_info['equil_end_offset']))
-        sys.stderr.write('EQUIL for %s: %d bytes\n' % (key, block_info['equil_end_offset'] - block_info['equil_start_offset']))
         sys.stdout.write(get_block_from_file(block_info['fname'],
             block_info['prod_start_offset'],
             block_info['prod_end_offset']))
-        sys.stderr.write('PROD for %s: %d bytes\n' % (key, block_info['prod_end_offset'] - block_info['prod_start_offset']))
 
     return 0
 
