@@ -12,6 +12,8 @@
 import re
 import argparse
 import sys
+from os.path import isfile
+import yaml
 from natsort import natsorted
 
 def readline_and_offset(f):
@@ -70,6 +72,7 @@ def get_block_from_file(fname, start, end):
 
 def main():
     ap = argparse.ArgumentParser(description='Stitch together NAMD fepout files, discarding incomplete lambda windows, and dump the result to stdout')
+    ap.add_argument('--spec', help='FEP specification that dictates which lambda ranges should be used from which fepout files')
     ap.add_argument('fepout_file', nargs='+', help='.fepout files, in order of lambdas you want')
     args = ap.parse_args()
 
@@ -77,12 +80,53 @@ def main():
     # This way we can avoid keeping big blocks of data around in memory.
     all_offsets = {}
     last_delta = 0
+    spec = None
+
+    # TODO:
+    # If user provides a yaml file that describes which lambda ranges can come from which files,
+    # go through each block that we inhaled and keep only those which meet the criteria.
+    # Bonus: Maybe check to ensure that we have covered the entire transformation.
+    if args.spec:
+        if not isfile(args.spec):
+            sys.stderr.write('Cannot find FEP your spec file %s.' % args.spec)
+            return 1
+        
+        spec_yaml = yaml.load(open(args.spec))
+        spec = {}
+        sys.stderr.write('Here is the FEP specification you provided:\n')
+        for fepout in spec_yaml:
+            (b, e) = (float(l) for l in spec_yaml[fepout].split())
+            spec[fepout] = (b, e)
+            sys.stderr.write('    %s: lambda %f to %f\n' % (fepout, b, e)) 
 
     for fname in args.fepout_file:
         offsets = scan_fepout_file(fname)
         # Allow newer blocks to override older ones
         for key in offsets:
+            # Look for a reason to not include this block.
+            # First up: if this fepout file was not mentioned in the spec, toss the block
+            if spec and fname not in spec:
+                sys.stderr.write('Ignoring %s from %s because that fepout file was not in the spec\n' % (key, fname))
+                continue
+            # Next: this fepout file is mentioned in the spec, but this lambda window is disallowed
+            if spec and fname in spec:
+                (spec_b, spec_e) = spec[fname]
+                # Extract the lambda window values from the block key
+                (b, e) = (float(l) for l in key.split('_'))
+                # This lambda window must be contained within the spec lambda range
+                if b >= spec_b and e <= spec_e:
+                    sys.stderr.write('Allowing %s: %f to %f because we want to keep windows in range %f to %f\n' % (fname, b, e,
+                        spec_b, spec_e))
+                else:
+                    sys.stderr.write('Ignoring %s: %f to %f because that lambda window is not within the allowed range\n' % (fname, b, e))
+                    continue
+
             all_offsets[key] = offsets[key]
+            # We use the last delta value encountered to decide whether lambdas increase or decrease.
+            # Naturally this does not protect against weird pathological cases where the user provides
+            # both increasing and decreasing lambda windows. I guess we should error out in that case,
+            # but such intelligence is not yet implemented. Could easily be done by comparing the sign
+            # of last_delta and offsets[key]['delta']; if they are different, it's bad news bears.
             last_delta = offsets[key]['delta']
 
     # Spit out a single header block from any .fepout file
