@@ -34,7 +34,7 @@ def scan_fepout_file(fname):
     new_fep_window_re = re.compile(r'#NEW FEP WINDOW: LAMBDA SET TO ([\d.]+) LAMBDA2 ([\d.]+)')
     equil_end_re = re.compile(r'#\d+ STEPS OF EQUILIBRATION AT LAMBDA [\d.]+ COMPLETED')
     prod_start_re = re.compile(r'#STARTING COLLECTION OF ENSEMBLE AVERAGE')
-    prod_end_re = re.compile(r'#Free energy change for lambda window \[ ([\d.]+) ([\d.]+) \] is [-\d.]+ ; net change until now is [-\d.]+')
+    prod_end_re = re.compile(r'#Free energy change for lambda window \[ ([\d.]+) ([\d.]+) \] is ([-\d.]+) ; net change until now is [-\d.]+')
 
     f = open(fname)
     # Eat the start of file header, which should span two lines
@@ -63,6 +63,8 @@ def scan_fepout_file(fname):
         line, offset = readline_and_offset_until(f, prod_end_re)
         if line == '': return lambdas
         current_lambda['prod_end_offset'] = f.tell()
+        # Save the free energy change for this window so we can do some calculations with it later
+        current_lambda['energy_change'] = float(prod_end_re.match(line).group(3))
         lambdas[key] = current_lambda
 
 def get_block_from_file(fname, start, end):
@@ -134,6 +136,8 @@ def main():
         sys.stdout.write(get_block_from_file(all_offsets[key]['fname'], 0, all_offsets[key]['header_end_offset']))
         break
 
+    total_energy_change = 0.0
+
     for key in natsorted(all_offsets.keys(), reverse=(last_delta<0)):
         block_info = all_offsets[key]
         sys.stderr.write('%s from %s: Equil: %d bytes; Prod %d bytes\n' % (key,
@@ -147,6 +151,10 @@ def main():
             block_info['prod_start_offset'],
             block_info['prod_end_offset']))
 
+        total_energy_change += block_info['energy_change']
+
+    sys.stderr.write('Kept %d lambda windows.\n' % len(all_offsets))
+    sys.stderr.write('Total energy change: %f\n' % total_energy_change)
     return 0
 
 if __name__ == '__main__':
