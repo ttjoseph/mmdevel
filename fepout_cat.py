@@ -112,9 +112,9 @@ def main():
                 continue
             # Next: this fepout file is mentioned in the spec, but this lambda window is disallowed
             if spec and fname in spec:
-                (spec_b, spec_e) = spec[fname]
+                (spec_b, spec_e) = sorted(spec[fname])
                 # Extract the lambda window values from the block key
-                (b, e) = (float(l) for l in key.split('_'))
+                (b, e) = sorted(float(l) for l in key.split('_'))
                 # This lambda window must be contained within the spec lambda range
                 if b >= spec_b and e <= spec_e:
                     sys.stderr.write('Allowing %s: %f to %f because we want to keep windows in range %f to %f\n' % (fname, b, e,
