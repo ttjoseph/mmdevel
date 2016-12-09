@@ -112,7 +112,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     # To do this, we need to associate atom types to atom indices with the help of MDAnalysis
     u = mda.Universe(data['psf'], pdb_fname)
     for key, dihedral in data['dihedrals'].iteritems():
-        dihedral['atomtypes'] = [u.atoms[i - 1].type for i in dihedral['indices']]
+        dihedral['atomtypes'] = [u.atoms[i].type for i in dihedral['indices']]
 
     # Construct parameters block
     prm_string = ''
@@ -305,7 +305,7 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
     data = p.map(calc_one_mm_energy, data)
     # For debugging only - stack trace in Python 2 is ruined by Pool
     # for i in range(len(data)):
-    #    data[i] = calc_one_mm_energy(data[i])
+    #     data[i] = calc_one_mm_energy(data[i])
 
     def shift_zeropoint(data, key):
         smallest = data[0][key]
