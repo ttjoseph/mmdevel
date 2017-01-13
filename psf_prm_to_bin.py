@@ -66,264 +66,265 @@ def read_int_block(f, num_records, max_records_per_line):
         data.extend(parse_ints(l))
     
     return data
-    
-psf = open(sys.argv[1], "r")
-prm = open(sys.argv[2], "r")
-out = open("solute.top.tom", "w")
 
-# Eat header
-l = psf.readline()
-if l[0:3] != "PSF":
-    print >>sys.stderr, "%s doesn't look like a PSF file to me." % sys.argv[1]
-    sys.exit(1)
-psf.readline() # Blank line
-(numlines, kind) = get_psf_block_header(psf)
-for i in xrange(numlines): psf.readline()
-psf.readline()
+if __name__ == '__main__':
+    psf = open(sys.argv[1], "r")
+    prm = open(sys.argv[2], "r")
+    out = open("solute.top.tom", "w")
 
-# !NATOM block contains, for each atom, its type and charge, as well as residue assignment
-(num_atoms, kind) = get_psf_block_header(psf)
-print "Number of atoms: %d" % num_atoms
-residue_map = []
-charges = []
-atom_types = []
-
-# Parse each atom line
-#          1         2         3         4         5         6
-#0123456789012345678901234567890123456789012345678901234567890123456789
-#       1 LIGH 1    ALA  N    NH3   -0.300000       14.0070           0
-found_end_of_solute = False
-num_solute_atoms = 0
-last_resid, last_segment = -1, None
-num_residues = num_solute_residues = 0
-cys_sg_list = [] # atom indices of CYS SG atoms
-for index in xrange(num_atoms):
+    # Eat header
     l = psf.readline()
-    atom_index = int(l[0:8].strip())
-    segment = l[9:13].strip()
-    resid = int(l[14:19].strip())
-    resname = l[19:24].strip()
-    atomname = l[24:29].strip()
-    atomtype = l[29:34].strip()
-    charge = float(l[35:44].strip())
-    
-    if resname == "CYS" and atomname == "SG":
-        cys_sg_list.append(atom_index)
-    
-    # AMBER pre-multiplies by sqrt of coulomb constant
-    # See http://ambermd.org/Questions/units.html
-    charges.append(charge*math.sqrt(332.0636))
-    atom_types.append(atomtype)
+    if l[0:3] != "PSF":
+        print >>sys.stderr, "%s doesn't look like a PSF file to me." % sys.argv[1]
+        sys.exit(1)
+    psf.readline() # Blank line
+    (numlines, kind) = get_psf_block_header(psf)
+    for i in xrange(numlines): psf.readline()
+    psf.readline()
 
-    # Are we in a new residue? If so, increment the residue count
-    if last_resid != resid or last_segment != segment:
-        num_residues += 1
-    last_resid, last_segment = resid, segment
-    
-    if found_end_of_solute is False and resname == "TIP3":
-        found_end_of_solute = True
-        num_solute_residues = num_residues - 1 # We subtract 1 because the residue count has incremented into the first non-solute atom
-        print "Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues)
-        
+    # !NATOM block contains, for each atom, its type and charge, as well as residue assignment
+    (num_atoms, kind) = get_psf_block_header(psf)
+    print "Number of atoms: %d" % num_atoms
+    residue_map = []
+    charges = []
+    atom_types = []
+
+    # Parse each atom line
+    #          1         2         3         4         5         6
+    #0123456789012345678901234567890123456789012345678901234567890123456789
+    #       1 LIGH 1    ALA  N    NH3   -0.300000       14.0070           0
+    found_end_of_solute = False
+    num_solute_atoms = 0
+    last_resid, last_segment = -1, None
+    num_residues = num_solute_residues = 0
+    cys_sg_list = [] # atom indices of CYS SG atoms
+    for index in xrange(num_atoms):
+        l = psf.readline()
+        atom_index = int(l[0:8].strip())
+        segment = l[9:13].strip()
+        resid = int(l[14:19].strip())
+        resname = l[19:24].strip()
+        atomname = l[24:29].strip()
+        atomtype = l[29:34].strip()
+        charge = float(l[35:44].strip())
+
+        if resname == "CYS" and atomname == "SG":
+            cys_sg_list.append(atom_index)
+
+        # AMBER pre-multiplies by sqrt of coulomb constant
+        # See http://ambermd.org/Questions/units.html
+        charges.append(charge*math.sqrt(332.0636))
+        atom_types.append(atomtype)
+
+        # Are we in a new residue? If so, increment the residue count
+        if last_resid != resid or last_segment != segment:
+            num_residues += 1
+        last_resid, last_segment = resid, segment
+
+        if found_end_of_solute is False and resname == "TIP3":
+            found_end_of_solute = True
+            num_solute_residues = num_residues - 1 # We subtract 1 because the residue count has incremented into the first non-solute atom
+            print "Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues)
+
+        if found_end_of_solute is False:
+            num_solute_atoms += 1
+            # Unlike the AMBER residue map, ours is zero-based
+            residue_map.append(num_residues - 1)
+
+    psf.readline() # Blank line
+    print "%d residues?" % num_residues
+
     if found_end_of_solute is False:
-        num_solute_atoms += 1
-        # Unlike the AMBER residue map, ours is zero-based
-        residue_map.append(num_residues - 1)
+        num_solute_residues = num_residues
 
-psf.readline() # Blank line
-print "%d residues?" % num_residues
+    # Read in the various bonds.
+    # !NBOND - 4 per line (8 numbers)
+    (num_bonds, kind) = get_psf_block_header(psf)
+    bonds = read_int_block(psf, num_bonds, 4)
 
-if found_end_of_solute is False:
-    num_solute_residues = num_residues
+    psf.readline() # Blank line
+    # NTHETA block: angles, 3 per line, for 9 numbers
+    (num_angles, kind) = get_psf_block_header(psf)
+    angles = read_int_block(psf, num_angles, 3)
 
-# Read in the various bonds.
-# !NBOND - 4 per line (8 numbers)
-(num_bonds, kind) = get_psf_block_header(psf)
-bonds = read_int_block(psf, num_bonds, 4)
+    psf.readline() # Blank line
+    # NPHI block: dihedrals, 2 per line, for 8 numbers
+    (num_dihedrals, kind) = get_psf_block_header(psf)
+    dihedrals = read_int_block(psf, num_dihedrals, 2)
 
-psf.readline() # Blank line
-# NTHETA block: angles, 3 per line, for 9 numbers
-(num_angles, kind) = get_psf_block_header(psf)
-angles = read_int_block(psf, num_angles, 3)
+    psf.readline() # Blank line
+    # IMPROPERS
+    (num_impropers, kind) = get_psf_block_header(psf)
 
-psf.readline() # Blank line
-# NPHI block: dihedrals, 2 per line, for 8 numbers
-(num_dihedrals, kind) = get_psf_block_header(psf)
-dihedrals = read_int_block(psf, num_dihedrals, 2)
+    if len(bonds)%2 != 0 or len(angles)%3 != 0:
+        print >>sys.stderr, "I didn't parse bonds or angles properly. Whoops!"
+        sys.exit(1)
 
-psf.readline() # Blank line
-# IMPROPERS
-(num_impropers, kind) = get_psf_block_header(psf)
+    # OK. Now we're done reading the PSF file.
 
-if len(bonds)%2 != 0 or len(angles)%3 != 0:
-    print >>sys.stderr, "I didn't parse bonds or angles properly. Whoops!"
-    sys.exit(1)
+    # Generate list of distinct atom types
+    the_types = list(set(atom_types))
+    num_atom_types = len(the_types)
+    print "There are %d distinct atom types in the PSF." % len(the_types)
+    print "These are:", the_types
+    # num_solute_atoms should be equal to the index of the first solvent atom
 
-# OK. Now we're done reading the PSF file.
+    # We need to extract the LJ terms from the prm file. Happily, we don't
+    # need anything else from it (since we are only doing nonbonded energies).
+    l = ""
+    while l[0:4] != "NONB":
+        l = prm.readline().strip()
+    if l[-1] == '-': l = prm.readline().strip() # Eat extra nonsense
 
-# Generate list of distinct atom types
-the_types = list(set(atom_types))
-num_atom_types = len(the_types)
-print "There are %d distinct atom types in the PSF." % len(the_types)
-print "These are:", the_types
-# num_solute_atoms should be equal to the index of the first solvent atom
+    nuke_comment_re = re.compile('!.*$') # Regexp to get rid of comments
+    # We assume the HBOND line is the end of the nonbonded parameters
+    prm_type, prm_epsilon, prm_rmin2 = [], [], []
+    prm_eps14, prm_rmin214 = [], []
 
-# We need to extract the LJ terms from the prm file. Happily, we don't
-# need anything else from it (since we are only doing nonbonded energies).
-l = ""
-while l[0:4] != "NONB":
-    l = prm.readline().strip()
-if l[-1] == '-': l = prm.readline().strip() # Eat extra nonsense
+    while True:
+        l = prm.readline()
+        if l == "": break # EOF
+        # Skip continuation line
+        if l.strip().endswith('-'):
+            prm.readline()
+            continue
+        l = nuke_comment_re.sub('', l).strip()
+        if l == "": continue
+        if l[0:4] == "HBON" or l[0:4] == "NBFI": break
+        # If the line doesn't start with a space, it's a new section, and we should stop
+        # TODO: What's NBFIX?
+        atomtype = ""
+        epsilon, rmin2, eps14, rmin214 = None, None, None, None
+        try:
+            (atomtype, dummy, epsilon, rmin2, dummy, eps14, rmin214) = l.split()
+            eps14 = float(eps14.strip())
+            rmin214 = float(rmin214.strip())
+        except ValueError:
+            # print l
+            (atomtype, dummy, epsilon, rmin2) = l.split()
+        epsilon = float(epsilon.strip())
+        rmin2 = float(rmin2.strip())
+        prm_type.append(atomtype.strip())
+        prm_epsilon.append(epsilon)
+        prm_rmin2.append(rmin2)
+        prm_eps14.append(eps14)
+        prm_rmin214.append(rmin214)
 
-nuke_comment_re = re.compile('!.*$') # Regexp to get rid of comments
-# We assume the HBOND line is the end of the nonbonded parameters
-prm_type, prm_epsilon, prm_rmin2 = [], [], []
-prm_eps14, prm_rmin214 = [], []
+    # Now we have the LJ terms. AMBER does some extra preprocessing with these
+    # that CHARMM apparently doesn't. The LJ terms for each pair of atom types
+    # is precalculated before being stored in the prmtop file.
+    # Array of normal (non 1-4) LJ12 terms - one for each pair of atom types
+    # Array of normal LJ6 terms
+    nb_indices = [0] * num_atom_types**2
+    # Apparently we need the same atom type to interact with itself for MARTINI, which means
+    # the main diagonal of the notional LJ interaction matrix must be present. So we need to
+    # have the LJ term arrays big enough for that.
+    lj12 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+    lj6 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+    lj1214 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+    lj614 = [0] * ((num_atom_types**2 + num_atom_types)/2)
+    counter = 0
+    for i in xrange(num_atom_types):
+        for j in xrange(i+1):
+            # prm_* variables contain nonbonded paramters for all atom types but
+            # we will only store information for those types that occur in the structure
+            idx_a = prm_type.index(the_types[i])
+            idx_b = prm_type.index(the_types[j])
+            eps_a, eps_b = prm_epsilon[idx_a], prm_epsilon[idx_b]
+            rmin2_a, rmin2_b = prm_rmin2[idx_a], prm_rmin2[idx_b]
+            eps14_a, eps14_b = prm_eps14[idx_a], prm_eps14[idx_b]
+            rmin214_a, rmin214_b = prm_rmin214[idx_a], prm_rmin214[idx_b]
+            # Figure out where in NBIndices this will be
+            #     int nbparm_offs_i = Ntypes * (AtomTypeIndices[atom_i] - 1);
+            #     int index = NBIndices[nbparm_offs_i+AtomTypeIndices[atom_j]-1] - 1;
+            #     double thisEnergy = LJ12[index]*distRecip6*distRecip6 - LJ6[index]*distRecip6;
+            # print "%s vs %s: %d %d" % (the_types[i], the_types[j], idx_a, idx_b)
+            nb_indices[num_atom_types*i+j] = counter+1 # Don't forget stupid FORTRAN 1-based indexing
+            nb_indices[num_atom_types*j+i] = counter+1
+            # From CHARMM prm_all27:
+            # V(Lennard-Jones) = Eps,i,j[(Rmin,i,j/ri,j)**12 - 2(Rmin,i,j/ri,j)**6]
+            # epsilon: kcal/mole, Eps,i,j = sqrt(eps,i * eps,j)
+            # Rmin/2: A, Rmin,i,j = Rmin/2,i + Rmin/2,j
+            eps = math.sqrt(eps_a * eps_b)
+            rmin = rmin2_a + rmin2_b
+            lj12[counter] = eps * rmin**12
+            lj6[counter] = 2 * eps * rmin**6
+            if None not in (eps14_a, eps14_b, rmin214_a, rmin214_b):
+                eps14 = math.sqrt(eps14_a * eps14_b)
+                rmin14 = rmin214_a + rmin214_b
+                lj1214[counter] = eps14 * rmin14**12
+                lj614[counter] = 2 * eps14 * rmin**6
+            counter += 1
 
-while True:
-    l = prm.readline()
-    if l == "": break # EOF
-    # Skip continuation line
-    if l.strip().endswith('-'):
-        prm.readline()
-        continue
-    l = nuke_comment_re.sub('', l).strip()
-    if l == "": continue
-    if l[0:4] == "HBON" or l[0:4] == "NBFI": break
-    # If the line doesn't start with a space, it's a new section, and we should stop
-    # TODO: What's NBFIX?
-    atomtype = ""
-    epsilon, rmin2, eps14, rmin214 = None, None, None, None
-    try:
-        (atomtype, dummy, epsilon, rmin2, dummy, eps14, rmin214) = l.split()
-        eps14 = float(eps14.strip())
-        rmin214 = float(rmin214.strip())
-    except ValueError:
-        # print l
-        (atomtype, dummy, epsilon, rmin2) = l.split()
-    epsilon = float(epsilon.strip())
-    rmin2 = float(rmin2.strip())
-    prm_type.append(atomtype.strip())
-    prm_epsilon.append(epsilon)
-    prm_rmin2.append(rmin2)
-    prm_eps14.append(eps14)
-    prm_rmin214.append(rmin214)
+    # Associative array of bond types
+    print "Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576)
+    # bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
+    bond_type = numpy.zeros((num_solute_atoms, num_solute_atoms), 'u1')
+    for i in xrange(0, len(bonds), 2):
+        atom_i = bonds[i] - 1
+        atom_j = bonds[i+1] - 1
 
-# Now we have the LJ terms. AMBER does some extra preprocessing with these
-# that CHARMM apparently doesn't. The LJ terms for each pair of atom types
-# is precalculated before being stored in the prmtop file.
-# Array of normal (non 1-4) LJ12 terms - one for each pair of atom types
-# Array of normal LJ6 terms
-nb_indices = [0] * num_atom_types**2
-# Apparently we need the same atom type to interact with itself for MARTINI, which means
-# the main diagonal of the notional LJ interaction matrix must be present. So we need to
-# have the LJ term arrays big enough for that.
-lj12 = [0] * ((num_atom_types**2 + num_atom_types)/2)
-lj6 = [0] * ((num_atom_types**2 + num_atom_types)/2)
-lj1214 = [0] * ((num_atom_types**2 + num_atom_types)/2)
-lj614 = [0] * ((num_atom_types**2 + num_atom_types)/2)
-counter = 0
-for i in xrange(num_atom_types):
-    for j in xrange(i+1):
-        # prm_* variables contain nonbonded paramters for all atom types but
-        # we will only store information for those types that occur in the structure
-        idx_a = prm_type.index(the_types[i])
-        idx_b = prm_type.index(the_types[j])
-        eps_a, eps_b = prm_epsilon[idx_a], prm_epsilon[idx_b]
-        rmin2_a, rmin2_b = prm_rmin2[idx_a], prm_rmin2[idx_b]
-        eps14_a, eps14_b = prm_eps14[idx_a], prm_eps14[idx_b]
-        rmin214_a, rmin214_b = prm_rmin214[idx_a], prm_rmin214[idx_b]
-        # Figure out where in NBIndices this will be
-        #     int nbparm_offs_i = Ntypes * (AtomTypeIndices[atom_i] - 1);
-        #     int index = NBIndices[nbparm_offs_i+AtomTypeIndices[atom_j]-1] - 1;
-        #     double thisEnergy = LJ12[index]*distRecip6*distRecip6 - LJ6[index]*distRecip6;
-        # print "%s vs %s: %d %d" % (the_types[i], the_types[j], idx_a, idx_b)
-        nb_indices[num_atom_types*i+j] = counter+1 # Don't forget stupid FORTRAN 1-based indexing
-        nb_indices[num_atom_types*j+i] = counter+1
-        # From CHARMM prm_all27:
-        # V(Lennard-Jones) = Eps,i,j[(Rmin,i,j/ri,j)**12 - 2(Rmin,i,j/ri,j)**6]
-        # epsilon: kcal/mole, Eps,i,j = sqrt(eps,i * eps,j)
-        # Rmin/2: A, Rmin,i,j = Rmin/2,i + Rmin/2,j
-        eps = math.sqrt(eps_a * eps_b)
-        rmin = rmin2_a + rmin2_b
-        lj12[counter] = eps * rmin**12
-        lj6[counter] = 2 * eps * rmin**6
-        if None not in (eps14_a, eps14_b, rmin214_a, rmin214_b):
-            eps14 = math.sqrt(eps14_a * eps14_b)
-            rmin14 = rmin214_a + rmin214_b
-            lj1214[counter] = eps14 * rmin14**12
-            lj614[counter] = 2 * eps14 * rmin**6
-        counter += 1
-        
-# Associative array of bond types
-print "Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576)
-# bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
-bond_type = numpy.zeros((num_solute_atoms, num_solute_atoms), 'u1')
-for i in xrange(0, len(bonds), 2):
-    atom_i = bonds[i] - 1
-    atom_j = bonds[i+1] - 1
-    
-    # if bonds[i] in cys_sg_list and bonds[i+1] in cys_sg_list:
-    #     print "DISU atoms %d %d" % (bonds[i], bonds[i+1])
-    
-    if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
-        continue
-    bond_type[atom_i, atom_j] |= BOND
-    bond_type[atom_j, atom_i] |= BOND
-    
-for i in xrange(0, len(angles), 3):
-    atom_i = angles[i] - 1
-    atom_j = angles[i+2] - 1
-    if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
-        continue
-    bond_type[atom_i, atom_j] |= ANGLE
-    bond_type[atom_j, atom_i] |= ANGLE
+        # if bonds[i] in cys_sg_list and bonds[i+1] in cys_sg_list:
+        #     print "DISU atoms %d %d" % (bonds[i], bonds[i+1])
 
-for i in xrange(0, len(dihedrals), 4):
-    atom_i = dihedrals[i] - 1
-    atom_j = dihedrals[i+3] - 1
-    if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
-        continue
-    bond_type[atom_i, atom_j] |= DIHEDRAL
-    bond_type[atom_j, atom_i] |= DIHEDRAL
+        if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
+            continue
+        bond_type[atom_i, atom_j] |= BOND
+        bond_type[atom_j, atom_i] |= BOND
 
-#
-# Output format:
-# Number of atoms, residues, atom types
-put_i32(out, num_solute_atoms)
-print "I suspect there are %d residues in the solute." % num_solute_residues
-put_i32(out, num_solute_residues)
-put_i32(out, num_atom_types)
+    for i in xrange(0, len(angles), 3):
+        atom_i = angles[i] - 1
+        atom_j = angles[i+2] - 1
+        if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
+            continue
+        bond_type[atom_i, atom_j] |= ANGLE
+        bond_type[atom_j, atom_i] |= ANGLE
 
-# Output NBIndices
-put_i32_array(out, nb_indices)
+    for i in xrange(0, len(dihedrals), 4):
+        atom_i = dihedrals[i] - 1
+        atom_j = dihedrals[i+3] - 1
+        if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
+            continue
+        bond_type[atom_i, atom_j] |= DIHEDRAL
+        bond_type[atom_j, atom_i] |= DIHEDRAL
 
-# Matrix of non-bonded terms indices - one cell for each atom type pair
-#   This allows us to locate LJ params for a particular atom pair
-# AtomTypeIndices: Array of atom type indices - atom types indexed by atom id
-# AMBER does one-based indexing so that's what we had used before
-atom_type_nums = [the_types.index(x)+1 for x in atom_types]
-put_i32_array(out, atom_type_nums[0:num_solute_atoms])
+    #
+    # Output format:
+    # Number of atoms, residues, atom types
+    put_i32(out, num_solute_atoms)
+    print "I suspect there are %d residues in the solute." % num_solute_residues
+    put_i32(out, num_solute_residues)
+    put_i32(out, num_atom_types)
 
-# Output LJ12, LJ6
-put_f32_array(out, lj12)
-put_f32_array(out, lj6)
+    # Output NBIndices
+    put_i32_array(out, nb_indices)
 
-# Output Charges: Array of charges
-put_f32_array(out, charges[0:num_solute_atoms])
+    # Matrix of non-bonded terms indices - one cell for each atom type pair
+    #   This allows us to locate LJ params for a particular atom pair
+    # AtomTypeIndices: Array of atom type indices - atom types indexed by atom id
+    # AMBER does one-based indexing so that's what we had used before
+    atom_type_nums = [the_types.index(x)+1 for x in atom_types]
+    put_i32_array(out, atom_type_nums[0:num_solute_atoms])
 
-# Output BondType
-# put_u8_array(out, bond_type)
-put_i32(out, num_solute_atoms * num_solute_atoms)
-for atom_i in xrange(num_solute_atoms):
-    out.write(struct.pack('%dB' % num_solute_atoms, *[x for x in bond_type[atom_i, :]]))
+    # Output LJ12, LJ6
+    put_f32_array(out, lj12)
+    put_f32_array(out, lj6)
 
-# Output ResidueMap: Array of atom indexes for residues
-put_i32_array(out, residue_map[0:num_solute_atoms])
+    # Output Charges: Array of charges
+    put_f32_array(out, charges[0:num_solute_atoms])
 
-# Extra Output: LJ12,1-4 and LJ6,1-4 parameters, which seems to be CHARMM's version
-#   of the LJ 1-4 scaling (divide by 1.2) that AMBER uses
-put_f32_array(out, lj1214)
-put_f32_array(out, lj614)
+    # Output BondType
+    # put_u8_array(out, bond_type)
+    put_i32(out, num_solute_atoms * num_solute_atoms)
+    for atom_i in xrange(num_solute_atoms):
+        out.write(struct.pack('%dB' % num_solute_atoms, *[x for x in bond_type[atom_i, :]]))
 
-print "All done."
+    # Output ResidueMap: Array of atom indexes for residues
+    put_i32_array(out, residue_map[0:num_solute_atoms])
+
+    # Extra Output: LJ12,1-4 and LJ6,1-4 parameters, which seems to be CHARMM's version
+    #   of the LJ 1-4 scaling (divide by 1.2) that AMBER uses
+    put_f32_array(out, lj1214)
+    put_f32_array(out, lj614)
+
+    print "All done."
