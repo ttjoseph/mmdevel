@@ -10,6 +10,8 @@ HARTREES_PER_KCAL = 1.041308e-21
 THINGS_PER_MOLE = 6.02214e23
 COULOMB = 332.0636
 QM_ENERGY_SCALE = 1.16 # From FFTK, and currently a mystery
+# QM_ENERGY_SCALE = (-6.95/-4.84) # From isoflurane paper
+
 
 def parse_waterint_log(filename):
     """Extracts SCF energies from a water interaction calculation done by Gaussian."""
@@ -179,6 +181,52 @@ def load_prm(filename):
     return params
 
 
+# FFTK moves the water closer by -0.2 A (default) from the QM coordinates
+# for a "better approximation" during the MM calculations. So that's what
+# we do here.
+def move_water(coords, offset=-0.2):
+    def distance_between_two_atoms(coords, i, j):
+        _, xi, yi, zi = coords[i]
+        _, xj, yj, zj = coords[j]
+        dist = (xi - xj) ** 2 + (yi - yj) ** 2 + (zi - zj) ** 2
+        return dist ** 0.5
+
+    # Find the H in the water that is the closest to any part of the ligand
+    best_dist = 9999999.0
+    best_water_atom = None
+    best_ligand_atom = None
+    for water_atom in range(len(coords) - 3, len(coords)):
+        atomic_num, x, y, z = coords[water_atom]
+        if atomic_num == 1: # Is this a hydrogen?
+            # If so, calculate the distance between this hydrogen and all atoms of the ligand,
+            # keeping a note of the closest ligand atom
+            for ligand_atom in range(len(coords) - 3):
+                dist = distance_between_two_atoms(coords, water_atom, ligand_atom)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_ligand_atom = ligand_atom
+                    best_water_atom = water_atom
+
+    print 'move_water: Closest distance is %.3f, between atoms %d and %d' % (best_dist, best_ligand_atom, best_water_atom)
+
+    # Determine a vector of norm == offset and pointing toward the closest ligand atom
+    _, lx, ly, lz = coords[best_ligand_atom]
+    _, wx, wy, wz = coords[best_water_atom]
+    dx, dy, dz = lx - wx, ly - wy, lz - wz
+    # Normalize this vector to turn it into a unit vector
+    dx, dy, dz = dx/best_dist, dy/best_dist, dz/best_dist
+    dx, dy, dz = dx * offset, dy * offset, dz * offset
+
+    shifted_coords = coords
+    for water_atom in range(len(coords) - 3, len(coords)):
+        atomic_num, x, y, z = coords[water_atom]
+        x, y, z = x + dx, y + dy, z + dz
+        shifted_coords[water_atom] = atomic_num, x, y, z
+
+    # Return a coords array where the water only has been displaced by that vector
+    return shifted_coords
+
+
 def calc_mm_interaction_energy(coords, ligand_psf, ff_prm):
     # TODO:
     # Assert that the last three atoms' atomic numbers are 1, 8, 1
@@ -192,6 +240,8 @@ def calc_mm_interaction_energy(coords, ligand_psf, ff_prm):
     # qH, qO = 0.417, -0.834
     # epsH, epsO = -0.046, -0.1521
     # rminH, rminO = 0.2245, 1.7682
+
+    coords = move_water(coords)
 
     ligand_atom_types, ligand_charges = ligand_psf
 
@@ -245,6 +295,9 @@ def main():
     sp_hf_energies, _ = parse_waterint_log(system['sp_hf_log'])
     sp_mp2_energies, _ = parse_waterint_log(system['sp_mp2_log'])
     sp_wat_energies, _ = parse_waterint_log(system['sp_wat_log'])
+    # Will uncomment two lines below when we have some B3LYP energies
+    # sp_b3lyp_energies, _ = parse_waterint_log(system['sp_b3lyp_log'])
+    # sp_wat_b3lyp_energies, _ = parse_waterint_log(system['sp_wat_b3lyp_log'])
 
     # Extract the final QM energies from the water interaction calculations.
     print '\nInteraction energies - single TIP3P vs ligand:'
@@ -254,7 +307,7 @@ def main():
         energies[filename] = {}
         energies[filename]['qm'] = scf_energies[-1] - sp_hf_energies[-1] - sp_wat_energies[-1]
         energies[filename]['qm'] *= QM_ENERGY_SCALE
-        energies[filename]['electro'], energies[filename]['lj'] =  calc_mm_interaction_energy(qm_coords[-1], ligand_psf, ff_prm)
+        energies[filename]['electro'], energies[filename]['lj'] = calc_mm_interaction_energy(qm_coords[-1], ligand_psf, ff_prm)
 
         print '%s: QM = %.3f, MMelec = %.3f, MMlj = %.3f, MMtot = %.3f' % (filename, energies[filename]['qm'],
                                             energies[filename]['electro'],
