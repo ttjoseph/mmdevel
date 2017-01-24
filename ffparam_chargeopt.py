@@ -9,7 +9,7 @@ from psf_prm_to_bin import get_psf_block_header, read_int_block
 HARTREES_PER_KCAL = 1.041308e-21
 THINGS_PER_MOLE = 6.02214e23
 COULOMB = 332.0636
-QM_ENERGY_SCALE = 1.16 # From FFTK, and currently a mystery
+# QM_ENERGY_SCALE = 1.16 # From FFTK, and currently a mystery
 # QM_ENERGY_SCALE = (-6.95/-4.84) # From isoflurane paper
 
 
@@ -227,7 +227,7 @@ def move_water(coords, offset=-0.2):
     return shifted_coords
 
 
-def calc_mm_interaction_energy(coords, ligand_psf, ff_prm):
+def calc_mm_interaction_energy(coords, water_shift, ligand_psf, ff_prm):
     # TODO:
     # Assert that the last three atoms' atomic numbers are 1, 8, 1
     # assert(...)
@@ -241,7 +241,7 @@ def calc_mm_interaction_energy(coords, ligand_psf, ff_prm):
     # epsH, epsO = -0.046, -0.1521
     # rminH, rminO = 0.2245, 1.7682
 
-    coords = move_water(coords)
+    coords = move_water(coords, water_shift)
 
     ligand_atom_types, ligand_charges = ligand_psf
 
@@ -275,6 +275,10 @@ def calc_mm_interaction_energy(coords, ligand_psf, ff_prm):
 
 def main():
     ap = argparse.ArgumentParser(description='Compare QM vs MM water interaction energies')
+    # Default scale value taken from isoflurane paper and its reasoning about discrepancy between
+    # QM B3LYP water dimer interaction energy and MM TIP3P water dimer interaction energy
+    ap.add_argument('--scale', type=float, default=-6.95/-4.84, help='Multiply QM energies by this number before printing them')
+    ap.add_argument('--shift', type=float, default=-0.0, help='Change the distance of the TIP3P water from ligand by this many Angstroms before calculating MM energy')
     ap.add_argument('system_yaml')
     ap.add_argument('waterint_logs', nargs='+')
     args = ap.parse_args()
@@ -285,39 +289,37 @@ def main():
         print 'Loading force field parameter file %s...' % filename
         ff_prm.update(load_prm(filename))
 
-    print 'I know about %d atomtypes now.' % len(ff_prm.keys())
+    print 'After loading all force field parameter files, I know about %d atomtypes.' % len(ff_prm.keys())
 
     print 'Loading ligand PSF %s...' % system['psf']
     ligand_psf = load_psf(system['psf'])
 
     # We use single-point energies for the compound in question as well as water
     # as a baseline. For some reason FFTK only uses Hartree-Fock.
-    sp_hf_energies, _ = parse_waterint_log(system['sp_hf_log'])
-    sp_mp2_energies, _ = parse_waterint_log(system['sp_mp2_log'])
-    sp_wat_energies, _ = parse_waterint_log(system['sp_wat_log'])
     # Will uncomment two lines below when we have some B3LYP energies
-    # sp_b3lyp_energies, _ = parse_waterint_log(system['sp_b3lyp_log'])
-    # sp_wat_b3lyp_energies, _ = parse_waterint_log(system['sp_wat_b3lyp_log'])
+    sp_energies, _ = parse_waterint_log(system['sp_ligand_log'])
+    sp_wat_energies, _ = parse_waterint_log(system['sp_wat_log'])
 
     # Extract the final QM energies from the water interaction calculations.
-    print '\nInteraction energies - single TIP3P vs ligand:'
+    print 'Scale factor for QM energies: %.4f.' % args.scale
+    print 'Moving MM water by this much: %.2f Angstroms (negative means closer to ligand).' % args.shift
+    print ''
+    print 'Interaction energies - single TIP3P vs ligand:'
     energies = {}
     for filename in args.waterint_logs:
         scf_energies, qm_coords = parse_waterint_log(filename)
         energies[filename] = {}
-        energies[filename]['qm'] = scf_energies[-1] - sp_hf_energies[-1] - sp_wat_energies[-1]
-        energies[filename]['qm'] *= QM_ENERGY_SCALE
-        energies[filename]['electro'], energies[filename]['lj'] = calc_mm_interaction_energy(qm_coords[-1], ligand_psf, ff_prm)
+        #energies[filename]['qm'] = scf_energies[-1] - sp_hf_energies[-1] - sp_wat_energies[-1]
+        energies[filename]['qm'] = scf_energies[-1] - sp_energies[-1] - sp_wat_energies[-1]
+        energies[filename]['qm'] *= args.scale
+        energies[filename]['electro'], energies[filename]['lj'] = calc_mm_interaction_energy(qm_coords[-1], args.shift, ligand_psf, ff_prm)
 
+        # Present the energies to the user, for their perusal
         print '%s: QM = %.3f, MMelec = %.3f, MMlj = %.3f, MMtot = %.3f' % (filename, energies[filename]['qm'],
                                             energies[filename]['electro'],
                                             energies[filename]['lj'],
                                             energies[filename]['electro'] + energies[filename]['lj'])
     
-    # At this point we would want to compare each QM energy to the corresponding MM energy.
-    # We now have the interaction energy between the water molecule and the compound in question.
-    # At this point, nonbonded terms don't matter because they have in principle been canceled out.
-    # So, just the regular old MM electrostatics should be good enough?
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
