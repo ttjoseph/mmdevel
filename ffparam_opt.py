@@ -399,7 +399,7 @@ def parse_gaussian_dihedral_scan_log(fname):
     return dihedral_results
 
 
-def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
+def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24, out=sys.stdout):
     """Generates a CMAP table for the given dihedral, given 2D dihedral scan data.
     
     We need to produce a 360x360 grid of energy terms that is [-180, 180) degrees for each dimension.
@@ -432,6 +432,9 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
                 for period2 in (-360, 0, 360):
                     coords.append((d1['angle'] + period1, d2['angle'] + period2))
                     values.append(d['qm_energy'] - d['mm_energy'])
+                    if (period1, period2) == (0, 0):
+                        sys.stderr.write('At %.2f %.2f, QM: %.2f, MM: %.2f, diff: %.2f\n' % \
+                            (d1['angle'], d2['angle'], d['qm_energy'], d['mm_energy'], d['qm_energy'] - d['mm_energy']))
     
     # This is probably a dumb way to do this
     xi = []
@@ -442,16 +445,17 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24):
     # We use scipy.interpolate.griddata. This takes coordinates (dihedral angles), values
     # (energy differences), and xi (CMAP grid coordinates), and returns interpolated values.
     cmap_raw = griddata(coords, values, xi, method='linear', fill_value=0.0)
+    sys.stderr.write('test: %f\n' % (cmap_raw[4*24+5]))
 
     # Now to spit out the CMAP table so that NAMD/CHARMM will parse it
-    print('%s %s %d' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
+    out.write('%s %s %d\n' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
     # Five values per line, why not
     for i in range(len(cmap_raw)):
-        if i != 0 and i % 5 == 0: sys.stdout.write('\n')
-        sys.stdout.write('   %.6f' % cmap_raw[i])
-    sys.stdout.write('\n')
+        if i != 0 and i % 5 == 0: out.write('\n')
+        out.write('   %.6f' % cmap_raw[i])
+    out.write('\n\n')
 
-def make_cmap_terms(data):
+def make_cmap_terms(data, fname=None):
     # Find all dihedral pairs and call make_single_cmap_table on each one.
     # Importantly, we tolerate the order of the dihedrals in each pair being reversed.
     # TODO: Does D(1,2,3,4) == D(4,3,2,1)?
@@ -459,10 +463,12 @@ def make_cmap_terms(data):
     for d in data:
         if len(d['dihedrals']) == 2:
             dihedral_pairs.add(' '.join(sorted(d['dihedrals'].keys())))
+
+    out = open(fname, 'w') if fname is not None else sys.stdout
     
     for dihedral_pair in dihedral_pairs:
         dihedrals = dihedral_pair.split()
-        make_single_cmap_table(data, dihedrals[0], dihedrals[1])
+        make_single_cmap_table(data, dihedrals[0], dihedrals[1], out=out)
     
 
 def generate_data_uri_download(fname):
@@ -541,7 +547,7 @@ Download files: %(download_str)s
 </div>
 <script>
 var qm_energy = { %(qm_energy_str)s, name: 'QM' };
-var mm_energy = { %(mm_energy_str)s, name: 'MM (with dihedrals)' };
+var mm_energy = { %(mm_energy_str)s, name: 'MM' };
 var data = [qm_energy, mm_energy];
 
 $(document).ready(function() {
@@ -584,7 +590,8 @@ def main():
     # Now we calculate the relaxed MM energy for each of those conformations.
     data = calc_mm_energy(system['psf'], system['pdb'], system['prms'], dihedral_results)
 
-    make_cmap_terms(data)
+    make_cmap_terms(data, '%s.cmap' % system['psf'])
+    print('Wrote CMAP terms to %s.cmap' % system['psf'])
 
     # Finally we should be able to make a plot of these energies, and make a table that
     # associates these energies to the actual dihedral angle we varied. Amazing!
