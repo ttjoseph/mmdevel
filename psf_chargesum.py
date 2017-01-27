@@ -15,7 +15,7 @@ def main():
     for atom in u.atoms:
         charge_sum += atom.charge
     
-    print('Total charge for %s is %.f' % (args.psf, charge_sum))
+    print('Total charge for %s is %f' % (args.psf, charge_sum))
 
 if __name__ == '__main__':
     import sys
