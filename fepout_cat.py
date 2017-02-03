@@ -13,6 +13,7 @@ import re
 import argparse
 import sys
 from os.path import isfile
+import cStringIO as StringIO
 import yaml
 from natsort import natsorted
 
@@ -72,9 +73,34 @@ def get_block_from_file(fname, start, end):
         f.seek(start)
         return f.read(end - start)
 
+def trim_timesteps_from_block(block, numsteps=0):
+    """Trims numsteps timesteps from the start of the provided FepEnergy block.
+
+    Note this is insensitive to the the interval of the steps. The same amount of
+    simulation time is trimmed regardless. So if you wanted 100000 steps trimmed but
+    had an output interval of 20000 (for some reason), only five FepEnergy values
+    would be trimmed."""
+
+    in_buf = StringIO.StringIO(block)
+    out_buf = StringIO.StringIO()
+    first_step = None
+    for line in in_buf.readlines():
+        if line.startswith('FepEnergy:'):
+            step = int(line.split()[1])
+            if first_step is None: first_step = step
+            if (step - first_step) >= numsteps:
+                out_buf.write(line)
+        else:
+            out_buf.write(line)
+
+    new_block = out_buf.getvalue()
+    out_buf.close()
+    return new_block
+
 def main():
     ap = argparse.ArgumentParser(description='Stitch together NAMD fepout files, discarding incomplete lambda windows, and dump the result to stdout')
     ap.add_argument('--spec', help='FEP specification that dictates which lambda ranges should be used from which fepout files')
+    ap.add_argument('--ignore-steps', type=int, default=0, help='Ignore this many steps at the start of each production window')
     ap.add_argument('fepout_file', nargs='+', help='.fepout files, in order of lambdas you want')
     args = ap.parse_args()
 
@@ -84,7 +110,6 @@ def main():
     last_delta = 0
     spec = None
 
-    # TODO:
     # If user provides a yaml file that describes which lambda ranges can come from which files,
     # go through each block that we inhaled and keep only those which meet the criteria.
     # Bonus: Maybe check to ensure that we have covered the entire transformation.
@@ -147,9 +172,12 @@ def main():
         sys.stdout.write(get_block_from_file(block_info['fname'],
             block_info['equil_start_offset'],
             block_info['equil_end_offset']))
-        sys.stdout.write(get_block_from_file(block_info['fname'],
+        prod_block = get_block_from_file(block_info['fname'],
             block_info['prod_start_offset'],
-            block_info['prod_end_offset']))
+            block_info['prod_end_offset'])
+
+        prod_block = trim_timesteps_from_block(prod_block, args.ignore_steps)
+        sys.stdout.write(prod_block)
 
         total_energy_change += block_info['energy_change']
 
