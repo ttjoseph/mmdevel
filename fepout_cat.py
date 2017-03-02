@@ -16,6 +16,7 @@ from os.path import isfile
 import cStringIO as StringIO
 import yaml
 from natsort import natsorted
+import intervaltree
 
 def readline_and_offset(f):
     offset = f.tell()
@@ -97,6 +98,109 @@ def trim_timesteps_from_block(block, numsteps=0):
     out_buf.close()
     return new_block
 
+
+def concat_block_prod(blocks, first_timestep=0):
+    """Returns a string containing combined production parts of the given blocks, including whatever header
+    is necessary for VMD ParseFEP to be happy."""
+
+    # Load the raw data content of the block
+    blocks_data = [get_block_from_file(b.data['fname'], b.data['prod_start_offset'], b.data['prod_end_offset']) for b in blocks]
+    out_buf = StringIO.StringIO()
+    headers, fepenergy_data, footers = [], [], []
+    delta = None
+
+    # Get the header from each block and ensure they are all for the same lambda range
+    for block_data in blocks_data:
+        in_buf = StringIO.StringIO(block_data)
+        header, header_done, footer = [], False, []
+        fepenergy = []
+        for line in in_buf.readlines():
+            # Parse headers and footers, which all start with '#'
+            if line.startswith('#'):
+                if header_done is False:
+                    header.append(line)
+                else:
+                    footer.append(line)
+            elif line.startswith(('FepEnergy:')):
+                fepenergy.append(line)
+                # If we see a FepEnergy line, we are by definition past the header
+                header_done = True
+
+        headers.append(header)
+        fepenergy_data.append(fepenergy)
+        footers.append(footer)
+
+    # Ensure the lambda ranges are the same, by induction. TODO this doesn't work because it's not always
+    # in the third line.
+    # Also guess the FepEnergy delta
+    # for block_i in range(1, len(headers)):
+    #     #NEW FEP WINDOW: LAMBDA SET TO %f LAMBDA2 %f
+    #     if headers[block_i][2] != headers[block_i-1][2]:
+    #         sys.stderr.write('concat_block_prod: The lambdas in these blocks do not match:\n')
+    #         sys.stderr.write(headers[block_i-1][2])
+    #         sys.stderr.write('\n')
+    #         sys.stderr.write(headers[block_i][2])
+    #         sys.stderr.write('\n')
+    #         return None
+
+    # Keep the header from the first block
+    for line in headers[0]:
+        out_buf.write(line)
+
+    # Concatenate the FepEnergy lines, renumbering as appropriate
+    fepenergy_timestep = first_timestep
+    for block_i in range(len(fepenergy_data)):
+        # FepEnergy: 50 ...
+        # FepEnergy: 100 ...
+        this_delta = int(fepenergy_data[block_i][1].split()[1]) - int(fepenergy_data[block_i][0].split()[1])
+
+        for line in fepenergy_data[block_i]:
+            fepenergy_timestep += this_delta
+            # FepEnergy: %6d %14.4f %14.4f...
+            out_buf.write('FepEnergy: %6d' % fepenergy_timestep)
+            fepenergy_timestep += this_delta
+            tokens = line.strip().split()
+            for i in range(2, len(tokens)):
+                out_buf.write(' %14.4f' % float(tokens[i]))
+            out_buf.write('\n')
+
+    # Preserve the footer from the last block
+    for line in footers[-1]:
+        out_buf.write(line)
+        out_buf.write('\n')
+
+    # Return the assembled concatenated block
+    new_block = out_buf.getvalue()
+    out_buf.close()
+    return new_block
+
+
+def load_spec_file(specfile):
+    spec = intervaltree.IntervalTree()
+    spec_fepout_files = set()
+    spec_yaml = yaml.load(open(specfile))
+
+    # Parse the spec file and save it in an interval tree
+    for lambda_range in spec_yaml:
+        fepouts = spec_yaml[lambda_range]
+        (spec_b, spec_e) = sorted(float(x) for x in lambda_range.strip().split())
+        # If we haven't seen this interval before, store it
+        if not spec.search(spec_b, spec_e, strict=True):
+            # ...But we may overlap with a previous interval, which is an error
+            if spec.search(spec_b, spec_e):
+                sys.stderr.write(
+                    '(%f, %f) overlaps with something else in the spec. I am too lazy to tell you what\n' % (
+                    spec_b, spec_e))
+                return None, None
+            spec[spec_b:spec_e] = []
+        current = list(spec[spec_b:spec_e])[0].data
+        current.append(fepouts)
+        spec[spec_b:spec_e] = current
+        spec_fepout_files.update(set(fepouts))
+        # sys.stderr.write('    %s: lambda %f to %f\n' % (fepout, b, e))
+
+    return spec, spec_fepout_files
+
 def main():
     ap = argparse.ArgumentParser(description='Stitch together NAMD fepout files, discarding incomplete lambda windows, and dump the result to stdout')
     ap.add_argument('--spec', help='FEP specification that dictates which lambda ranges should be used from which fepout files')
@@ -106,82 +210,88 @@ def main():
 
     # The general strategy is to record offsets within files delineating blocks we want to keep.
     # This way we can avoid keeping big blocks of data around in memory.
-    all_offsets = {}
     last_delta = 0
-    spec = None
+
+    spec, spec_fepout_files = None, set()
 
     # If user provides a yaml file that describes which lambda ranges can come from which files,
     # go through each block that we inhaled and keep only those which meet the criteria.
     # Bonus: Maybe check to ensure that we have covered the entire transformation.
     if args.spec:
         if not isfile(args.spec):
-            sys.stderr.write('Cannot find FEP your spec file %s.' % args.spec)
+            sys.stderr.write('Cannot find your FEP spec file %s.' % args.spec)
             return 1
+
+        spec, spec_fepout_files = load_spec_file(args.spec)
         
-        spec_yaml = yaml.load(open(args.spec))
-        spec = {}
-        sys.stderr.write('Here is the FEP specification you provided:\n')
-        for fepout in spec_yaml:
-            (b, e) = (float(l) for l in spec_yaml[fepout].split())
-            spec[fepout] = (b, e)
-            sys.stderr.write('    %s: lambda %f to %f\n' % (fepout, b, e)) 
+    # If user provided a spec, there's no need to load fepout files that aren't in the spec.
+    # So get rid of all fepout files in our list that we can't need.
+    all_fepout_files = set(args.fepout_file)
+    if len(spec_fepout_files) > 0:
+        all_fepout_files = all_fepout_files & spec_fepout_files
 
-    for fname in args.fepout_file:
-        offsets = scan_fepout_file(fname)
-        # Allow newer blocks to override older ones
-        for key in offsets:
-            # Look for a reason to not include this block.
-            # First up: if this fepout file was not mentioned in the spec, toss the block
-            if spec and fname not in spec:
-                sys.stderr.write('Ignoring %s from %s because that fepout file was not in the spec\n' % (key, fname))
-                continue
-            # Next: this fepout file is mentioned in the spec, but this lambda window is disallowed
-            if spec and fname in spec:
-                (spec_b, spec_e) = sorted(spec[fname])
-                # Extract the lambda window values from the block key
-                (b, e) = sorted(float(l) for l in key.split('_'))
-                # This lambda window must be contained within the spec lambda range
-                if b >= spec_b and e <= spec_e:
-                    sys.stderr.write('Allowing %s: %f to %f because we want to keep windows in range %f to %f\n' % (fname, b, e,
-                        spec_b, spec_e))
-                else:
-                    sys.stderr.write('Ignoring %s: %f to %f because that lambda window is not within the allowed range\n' % (fname, b, e))
+    # Load all blocks from all fepout files and store them in an interval tree
+    all_blocks = intervaltree.IntervalTree()
+    all_lambda_ranges = set()
+    for fname in all_fepout_files:
+        # Get a list of blocks in this fepout file
+        blocks = scan_fepout_file(fname)
+
+        for key in blocks:
+            (block_b, block_e) = sorted(float(l) for l in key.split('_'))
+            all_lambda_ranges.add((block_b, block_e))
+
+            # Look through all lambda ranges in spec to see whether this block is allowed
+            if spec:
+                spec_files = spec.search(block_b, block_e)
+                if len(spec_files) == 0: # Not in spec, keep on truckin'
                     continue
+                elif len(spec_files) > 1:
+                    sys.stderr.write('(%f, %f) spans more than one spec file entry. I am confused.\n' % (block_b, block_e))
+                    return 1
+                else: # We found exactly one result so keep going
+                    sys.stderr.write('Keeping key (%f, %f)\n' % (block_b, block_e)) # TODO: More detail
+                    pass
 
-            all_offsets[key] = offsets[key]
+            # Dump this block into the tree. Duplicates are OK because they'll be returned with intervaltree.search()
+            all_blocks[block_b:block_e] = blocks[key]
+
             # We use the last delta value encountered to decide whether lambdas increase or decrease.
             # Naturally this does not protect against weird pathological cases where the user provides
             # both increasing and decreasing lambda windows. I guess we should error out in that case,
             # but such intelligence is not yet implemented. Could easily be done by comparing the sign
             # of last_delta and offsets[key]['delta']; if they are different, it's bad news bears.
-            last_delta = offsets[key]['delta']
+            last_delta = blocks[key]['delta']
 
     # Spit out a single header block from any .fepout file
-    for key in all_offsets:
-        sys.stdout.write(get_block_from_file(all_offsets[key]['fname'], 0, all_offsets[key]['header_end_offset']))
+    for block in all_blocks:
+        sys.stdout.write(get_block_from_file(block.data['fname'], 0, block.data['header_end_offset']))
         break
 
     total_energy_change = 0.0
 
-    for key in natsorted(all_offsets.keys(), reverse=(last_delta<0)):
-        block_info = all_offsets[key]
+    # TODO:
+    for (block_b, block_e) in all_lambda_ranges:
+        # Get all blocks with this lambda range
+        blocks = all_blocks.search(block_b, block_e)
+        print >>sys.stderr, concat_block_prod(blocks)
         sys.stderr.write('%s from %s: Equil: %d bytes; Prod %d bytes\n' % (key,
-            block_info['fname'],
-            block_info['equil_end_offset'] - block_info['equil_start_offset'],
-            block_info['prod_end_offset'] - block_info['prod_start_offset']))
-        sys.stdout.write(get_block_from_file(block_info['fname'],
-            block_info['equil_start_offset'],
-            block_info['equil_end_offset']))
-        prod_block = get_block_from_file(block_info['fname'],
-            block_info['prod_start_offset'],
-            block_info['prod_end_offset'])
+            block.data['fname'],
+            block.data['equil_end_offset'] - block.data['equil_start_offset'],
+            block.data['prod_end_offset'] - block.data['prod_start_offset']))
+        sys.stdout.write(get_block_from_file(block.data['fname'],
+            block.data['equil_start_offset'],
+            block.data['equil_end_offset']))
+        prod_block = get_block_from_file(block.data['fname'],
+            block.data['prod_start_offset'],
+            block.data['prod_end_offset'])
 
         prod_block = trim_timesteps_from_block(prod_block, args.ignore_steps)
         sys.stdout.write(prod_block)
 
-        total_energy_change += block_info['energy_change']
+        total_energy_change += block.data['energy_change']
 
-    sys.stderr.write('Kept %d lambda windows.\n' % len(all_offsets))
+    sys.stderr.write('Kept %d lambda windows.\n' % len(all_blocks))
     sys.stderr.write('Total energy change: %f\n' % total_energy_change)
     return 0
 
