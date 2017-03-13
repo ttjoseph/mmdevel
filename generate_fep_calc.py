@@ -33,6 +33,7 @@ sbatch_preambles['perceval'] = """#!/bin/bash
 #SBATCH -o %(basename)s_%(group_id)d.out
 #SBATCH -e %(basename)s_%(group_id)d.err
 #SBATCH -p main
+#SBATCH -x memnode001 # Don't use this node as it is real slow
 #SBATCH -N 1 -n 24
 #SBATCH -t 48:00:00
 #SBATCH --mem=12000
