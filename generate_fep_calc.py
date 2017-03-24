@@ -8,9 +8,67 @@ import numpy as np
 import argparse
 from os.path import isfile
 
+sbatch_preambles = {}
+sbatch_preambles['stampede'] = """#!/bin/bash
+#SBATCH -J %(basename)s_%(group_id)d
+#SBATCH -o %(basename)s_%(group_id)d.out
+#SBATCH -e %(basename)s_%(group_id)d.err
+#SBATCH -p normal         # queue
+#SBATCH -N 4              # Number of nodes, not cores (16 cores/node)
+#SBATCH -n 64             # Total number of MPI tasks (if omitted, n=N)
+#SBATCH -t 48:00:00       # max time
+#SBATCH --mail-user=thomas.joseph@uphs.upenn.edu
+#SBATCH --mail-type=begin
+#SBATCH --mail-type=end
+
+module restore system
+module load gcc mvapich2
+
+SRUN=ibrun
+NAMD=~/bin/namd-2.12
+"""
+
+sbatch_preambles['perceval'] = """#!/bin/bash
+#SBATCH -J %(basename)s_%(group_id)d
+#SBATCH -o %(basename)s_%(group_id)d.out
+#SBATCH -e %(basename)s_%(group_id)d.err
+#SBATCH -p main
+#SBATCH -N 1 -n 24
+#SBATCH -t 48:00:00
+#SBATCH --mem=12000
+#SBATCH --export=ALL
+
+# Run these commands before submitting this script:
+#   module purge
+#   module load gcc mvapich2
+
+SRUN="srun -n $SLURM_NTASKS --mpi=pmi2"
+NAMD=$HOME/bin/namd2-2.12
+
+echo "Starting %(basename)s_%(group_id)d" | ~/bin/slack-ttjoseph
+
+"""
+
+sbatch_preambles['comet'] = """#!/bin/bash
+#SBATCH -J %(basename)s_%(group_id)d
+#SBATCH -o %(basename)s_%(group_id)d.out
+#SBATCH -e %(basename)s_%(group_id)d.err
+#SBATCH -p compute
+#SBATCH -N 6 --ntasks-per-node=24
+#SBATCH -t 48:00:00
+#SBATCH --export=ALL
+
+SRUN=ibrun
+NAMD=$HOME/bin/namd2-2.12
+
+echo "Starting %(basename)s_%(group_id)d" | ~/bin/slack-ttjoseph
+
+"""
+
 ap = argparse.ArgumentParser(description='Generate mildly embarrasingly parallel FEP input for NAMD')
 ap.add_argument('basename', help='Base filename, e.g. "fep", such that we generate fep<n>.namd which sources common_fep.namd')
 ap.add_argument('inputname', help='Per-group input system name (e.g. equilibrated system)')
+ap.add_argument('clustername', help='Supercomputer cluster you are using', default='perceval')
 ap.add_argument('--num-windows', type=int, default=50, help='Number of lambda windows')
 ap.add_argument('--windows-per-group', type=int, default=5, help='Maximum number of lambda windows per batch job')
 ap.add_argument('--per-group-num-equil-steps', type=int, default=500000)
@@ -56,24 +114,9 @@ run %(totalsteps)d
 
     # Make a submit script for this window group, for convenience
     if starting_a_group:
-        s = """#!/bin/bash
-#SBATCH -J %(basename)s_%(group_id)d
-#SBATCH -o %(basename)s_%(group_id)d.out
-#SBATCH -e %(basename)s_%(group_id)d.err
-#SBATCH -p normal         # queue
-#SBATCH -N 4              # Number of nodes, not cores (16 cores/node)
-#SBATCH -n 64             # Total number of MPI tasks (if omitted, n=N)
-#SBATCH -t 48:00:00       # max time
-#SBATCH --mail-user=thomas.joseph@uphs.upenn.edu
-#SBATCH --mail-type=begin
-#SBATCH --mail-type=end
-
-module restore system
-module load gcc mvapich2
-
-""" % data
+        s = sbatch_preambles[args.clustername] % data
         with open('submit-%s-group-%d.sh' % (args.basename, group_id), 'w') as f:
             f.write(s)
             for j in range(i, i+args.windows_per_group):
-                f.write('ibrun ~/bin/namd2-2.12 %s%03d.namd > %s%03d.log\n' % (args.basename, j, args.basename, j))
+                f.write('$SRUN $NAMD %s%03d.namd > %s%03d.log\n' % (args.basename, j, args.basename, j))
                 f.write('echo "%s%03d (group %d) done" | ~/bin/slack-ttjoseph\n\n' % (args.basename, j, group_id))
