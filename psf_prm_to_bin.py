@@ -40,7 +40,7 @@ def get_psf_block_header(f):
     l = f.readline()
     num = int(l[0:8].strip())
     kind = l[10:].strip()
-    print "Encountered %s block with %d records" % (kind, num)
+    print >>sys.stderr, "Encountered %s block with %d records" % (kind, num)
     return (num, kind)
 
 def parse_ints(l):

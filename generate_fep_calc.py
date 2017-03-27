@@ -32,7 +32,8 @@ sbatch_preambles['perceval'] = """#!/bin/bash
 #SBATCH -J %(basename)s_%(group_id)d
 #SBATCH -o %(basename)s_%(group_id)d.out
 #SBATCH -e %(basename)s_%(group_id)d.err
-#SBATCH -p main -x memnode001
+#SBATCH -p main
+#SBATCH -x memnode001 # Don't use this node as it is real slow
 #SBATCH -N 1 -n 24
 #SBATCH -t 48:00:00
 #SBATCH --mem=12000
@@ -49,21 +50,7 @@ echo "Starting %(basename)s_%(group_id)d" | ~/bin/slack-ttjoseph
 
 """
 
-sbatch_preambles['comet'] = """#!/bin/bash
-#SBATCH -J %(basename)s_%(group_id)d
-#SBATCH -o %(basename)s_%(group_id)d.out
-#SBATCH -e %(basename)s_%(group_id)d.err
-#SBATCH -p compute
-#SBATCH -N 6 --ntasks-per-node=24
-#SBATCH -t 48:00:00
-#SBATCH --export=ALL
 
-SRUN=ibrun
-NAMD=$HOME/bin/namd2-2.12
-
-echo "Starting %(basename)s_%(group_id)d" | ~/bin/slack-ttjoseph
-
-"""
 
 ap = argparse.ArgumentParser(description='Generate mildly embarrasingly parallel FEP input for NAMD')
 ap.add_argument('basename', help='Base filename, e.g. "fep", such that we generate fep<n>.namd which sources common_fep.namd')
