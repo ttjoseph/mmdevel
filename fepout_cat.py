@@ -99,75 +99,125 @@ def trim_timesteps_from_block(block, numsteps=0):
     return new_block
 
 
-def concat_block_prod(blocks, first_timestep=0):
+def concat_block_prod(blocks):
     """Returns a string containing combined production parts of the given blocks, including whatever header
     is necessary for VMD ParseFEP to be happy."""
 
-    # Load the raw data content of the block
+    # Load the raw production data content of the block
     blocks_data = [get_block_from_file(b.data['fname'], b.data['prod_start_offset'], b.data['prod_end_offset']) for b in blocks]
-    out_buf = StringIO.StringIO()
-    headers, fepenergy_data, footers = [], [], []
-    delta = None
 
-    # Get the header from each block and ensure they are all for the same lambda range
+    out_buf = StringIO.StringIO()
+    comments, fepenergy = [], []
+    lambdas = set()
+
+    lambda_range_re = re.compile(r'#NEW FEP WINDOW: LAMBDA SET TO (.+) LAMBDA2 (.+)')
+
+    # Load the header from each block and ensure they are all for the same lambda range
     for block_data in blocks_data:
         in_buf = StringIO.StringIO(block_data)
-        header, header_done, footer = [], False, []
-        fepenergy = []
+        comment_fragments, current_comment_fragment = [], []
+        fepenergy_fragments, current_fepenergy_fragment = [], []
+        # print >>sys.stderr, 'NEW BLOCK'
+
         for line in in_buf.readlines():
-            # Parse headers and footers, which all start with '#'
+            # print >>sys.stderr, line
             if line.startswith('#'):
-                if header_done is False:
-                    header.append(line)
-                else:
-                    footer.append(line)
+                # We are in a comment fragment. If we were previously in a FepEnergy fragment, "flush" it
+                if len(current_fepenergy_fragment) > 0:
+                    fepenergy_fragments.append(current_fepenergy_fragment)
+                    current_fepenergy_fragment = []
+                    #print >>sys.stderr, ''
+                    #print >>sys.stderr, "FLUSH FEPENERGY %d" % len(fepenergy_fragments)
+
+                current_comment_fragment.append(line)
+
+                # Also since this is a comment try to extract the lambda range for this block
+                lambda_range_match = lambda_range_re.match(line)
+                if lambda_range_match:
+                    b, e = float(lambda_range_match.group(1)), float(lambda_range_match.group(2))
+                    lambdas.add((b, e))
+                    #print >>sys.stderr, 'Found lambda range (%f, %f)' % (b, e)
+
             elif line.startswith(('FepEnergy:')):
-                fepenergy.append(line)
-                # If we see a FepEnergy line, we are by definition past the header
-                header_done = True
+                # We are in a FepEnergy fragment. If we were previously in a comment fragment, "flush" it
+                if len(current_comment_fragment) > 0:
+                    comment_fragments.append(current_comment_fragment)
+                    current_comment_fragment = []
+                    #print >>sys.stderr, "FLUSH COMMENTS"
 
-        headers.append(header)
-        fepenergy_data.append(fepenergy)
-        footers.append(footer)
+                current_fepenergy_fragment.append(line)
 
-    # Ensure the lambda ranges are the same, by induction. TODO this doesn't work because it's not always
-    # in the third line.
-    # Also guess the FepEnergy delta
-    # for block_i in range(1, len(headers)):
-    #     #NEW FEP WINDOW: LAMBDA SET TO %f LAMBDA2 %f
-    #     if headers[block_i][2] != headers[block_i-1][2]:
-    #         sys.stderr.write('concat_block_prod: The lambdas in these blocks do not match:\n')
-    #         sys.stderr.write(headers[block_i-1][2])
-    #         sys.stderr.write('\n')
-    #         sys.stderr.write(headers[block_i][2])
-    #         sys.stderr.write('\n')
-    #         return None
+        # Now that we are done with this block, let's figure out what we've got
+        if len(current_comment_fragment) > 0:
+            comment_fragments.append(current_comment_fragment)
+        if len(current_fepenergy_fragment) > 0:
+            fepenergy_fragments.append(current_fepenergy_fragment)
+        comments.append(comment_fragments)
+        fepenergy.append(fepenergy_fragments)
 
-    # Keep the header from the first block
-    for line in headers[0]:
-        out_buf.write(line)
+    # We stored all the lambda ranges in a set. If we add a different lambda range,
+    # the set will grow, which we use to detect whether there are any different lambda ranges.
+    if len(lambdas) > 1:
+        print >>sys.stderr, 'Um I think your lambda spec is messed up. Here is what I have for the same group of blocks:'
+        print >>sys.stderr, lambdas
+        return None
 
-    # Concatenate the FepEnergy lines, renumbering as appropriate
-    fepenergy_timestep = first_timestep
-    for block_i in range(len(fepenergy_data)):
+    # Keep the header from the first block, which should be the first comment fragment
+    # for line in comments[0][0]:
+    #    out_buf.write(line)
+
+    def emit_fepenergy_block(out_buf, lines, first_timestep=0):
         # FepEnergy: 50 ...
         # FepEnergy: 100 ...
-        this_delta = int(fepenergy_data[block_i][1].split()[1]) - int(fepenergy_data[block_i][0].split()[1])
+        # Extract the delta between timesteps, which requires at least two lines to be present
+        assert len(lines) > 2, 'FepEnergy block is only %d lines which is not very long' % len(lines)
+        delta = int(lines[1].split()[1]) - int(lines[0].split()[1])
 
-        for line in fepenergy_data[block_i]:
-            fepenergy_timestep += this_delta
+        timestep = first_timestep
+        for line in lines:
             # FepEnergy: %6d %14.4f %14.4f...
-            out_buf.write('FepEnergy: %6d' % fepenergy_timestep)
-            fepenergy_timestep += this_delta
+            out_buf.write('FepEnergy: %6d' % timestep)
             tokens = line.strip().split()
             for i in range(2, len(tokens)):
                 out_buf.write(' %14.4f' % float(tokens[i]))
             out_buf.write('\n')
 
-    # Preserve the footer from the last block
-    for line in footers[-1]:
+            # Renumber all the lines
+            timestep += delta
+
+        return timestep
+
+
+    # Next step: spit out an equilibration fragment, which we will take to be the first one we found.
+    # TODO: We could in principle just look for a block with more than one FepEnergy fragment in order to
+    # support just continuing a production run.
+
+    # Spit out the equilibration block from any of the blocks, taking note of the last timestep
+    equil_data = None
+    for b in blocks:
+        equil_data = get_block_from_file(b.data['fname'], b.data['equil_start_offset'], b.data['equil_end_offset'])
+        break
+
+    in_buf = StringIO.StringIO(equil_data)
+    timestep, last_timestep = 0, 0
+    for line in in_buf.readlines():
+        if line.startswith('FepEnergy:'):
+            last_timestep = timestep
+            timestep = int(line.split()[1])
         out_buf.write(line)
-        out_buf.write('\n')
+    timestep += timestep - last_timestep
+
+    # Spit out the comments that say we're done with equilibration now here's production
+    for line in comments[0][1]:
+        out_buf.write(line)
+
+    # Iterate over each block index and spit out the renumbered prod block
+    for block_i in range(len(fepenergy)):
+        timestep = emit_fepenergy_block(out_buf, fepenergy[block_i][0], first_timestep=timestep)
+
+    # Now emit the footer (from the last block)
+    for line in comments[-1][1]:
+        out_buf.write(line)
 
     # Return the assembled concatenated block
     new_block = out_buf.getvalue()
@@ -210,13 +260,11 @@ def main():
 
     # The general strategy is to record offsets within files delineating blocks we want to keep.
     # This way we can avoid keeping big blocks of data around in memory.
-    last_delta = 0
-
     spec, spec_fepout_files = None, set()
 
     # If user provides a yaml file that describes which lambda ranges can come from which files,
     # go through each block that we inhaled and keep only those which meet the criteria.
-    # Bonus: Maybe check to ensure that we have covered the entire transformation.
+    # Bonus TODO: Maybe check to ensure that we have covered the entire transformation.
     if args.spec:
         if not isfile(args.spec):
             sys.stderr.write('Cannot find your FEP spec file %s.' % args.spec)
@@ -237,6 +285,7 @@ def main():
         # Get a list of blocks in this fepout file
         blocks = scan_fepout_file(fname)
 
+        # The keys are of the form 0.0_0.02 which represents lambda range 0.0 to 0.02
         for key in blocks:
             (block_b, block_e) = sorted(float(l) for l in key.split('_'))
             all_lambda_ranges.add((block_b, block_e))
@@ -254,6 +303,7 @@ def main():
                     pass
 
             # Dump this block into the tree. Duplicates are OK because they'll be returned with intervaltree.search()
+            # and we can then concatenate them
             all_blocks[block_b:block_e] = blocks[key]
 
             # We use the last delta value encountered to decide whether lambdas increase or decrease.
@@ -261,38 +311,25 @@ def main():
             # both increasing and decreasing lambda windows. I guess we should error out in that case,
             # but such intelligence is not yet implemented. Could easily be done by comparing the sign
             # of last_delta and offsets[key]['delta']; if they are different, it's bad news bears.
-            last_delta = blocks[key]['delta']
+            # last_delta = blocks[key]['delta']
 
-    # Spit out a single header block from any .fepout file
+    # Spit out a single header block from any .fepout file, because we only want one of these
+    # in the resulting concatenated fepout output
+    # XXX: But this is wrong too because it includes the 'NEW FEP WINDOW' line
     for block in all_blocks:
         sys.stdout.write(get_block_from_file(block.data['fname'], 0, block.data['header_end_offset']))
         break
 
-    total_energy_change = 0.0
-
-    # TODO:
+    # TODO: This is where the magic happens
+    # Iterate over the set of lambda ranges we had assembled above
     for (block_b, block_e) in all_lambda_ranges:
-        # Get all blocks with this lambda range
+        # Find all blocks with this lambda range
         blocks = all_blocks.search(block_b, block_e)
-        print >>sys.stderr, concat_block_prod(blocks)
-        sys.stderr.write('%s from %s: Equil: %d bytes; Prod %d bytes\n' % (key,
-            block.data['fname'],
-            block.data['equil_end_offset'] - block.data['equil_start_offset'],
-            block.data['prod_end_offset'] - block.data['prod_start_offset']))
-        sys.stdout.write(get_block_from_file(block.data['fname'],
-            block.data['equil_start_offset'],
-            block.data['equil_end_offset']))
-        prod_block = get_block_from_file(block.data['fname'],
-            block.data['prod_start_offset'],
-            block.data['prod_end_offset'])
-
-        prod_block = trim_timesteps_from_block(prod_block, args.ignore_steps)
-        sys.stdout.write(prod_block)
-
-        total_energy_change += block.data['energy_change']
+        # And merge them. concat_block_prod will go read the block data from the fepout files
+        # and merge only their production sub-blocks, keeping an equilibration sub-block chosen arbitrarily .
+        print concat_block_prod(blocks)
 
     sys.stderr.write('Kept %d lambda windows.\n' % len(all_blocks))
-    sys.stderr.write('Total energy change: %f\n' % total_energy_change)
     return 0
 
 if __name__ == '__main__':
