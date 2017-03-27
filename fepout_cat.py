@@ -208,8 +208,7 @@ def concat_block_prod(blocks):
     timestep += timestep - last_timestep
 
     # Spit out the comments that say we're done with equilibration now here's production
-    for line in comments[0][1]:
-        out_buf.write(line)
+    # for line in comments[0][1]: out_buf.write(line)
 
     # Iterate over each block index and spit out the renumbered prod block
     for block_i in range(len(fepenergy)):
@@ -281,7 +280,7 @@ def main():
     # Load all blocks from all fepout files and store them in an interval tree
     all_blocks = intervaltree.IntervalTree()
     all_lambda_ranges = set()
-    for fname in all_fepout_files:
+    for fname in natsorted(all_fepout_files):
         # Get a list of blocks in this fepout file
         blocks = scan_fepout_file(fname)
 
@@ -296,10 +295,10 @@ def main():
                 if len(spec_files) == 0: # Not in spec, keep on truckin'
                     continue
                 elif len(spec_files) > 1:
-                    sys.stderr.write('(%f, %f) spans more than one spec file entry. I am confused.\n' % (block_b, block_e))
+                    sys.stderr.write('ERROR: (%f, %f) spans more than one spec file entry. What the heck?\n' % (block_b, block_e))
                     return 1
                 else: # We found exactly one result so keep going
-                    sys.stderr.write('Keeping key (%f, %f)\n' % (block_b, block_e)) # TODO: More detail
+                    sys.stderr.write('Keeping (%f, %f) from %s\n' % (block_b, block_e, fname)) # TODO: More detail
                     pass
 
             # Dump this block into the tree. Duplicates are OK because they'll be returned with intervaltree.search()
@@ -315,19 +314,19 @@ def main():
 
     # Spit out a single header block from any .fepout file, because we only want one of these
     # in the resulting concatenated fepout output
-    # XXX: But this is wrong too because it includes the 'NEW FEP WINDOW' line
+    # Should not include the 'NEW FEP WINDOW' line
     for block in all_blocks:
         sys.stdout.write(get_block_from_file(block.data['fname'], 0, block.data['header_end_offset']))
         break
 
     # TODO: This is where the magic happens
     # Iterate over the set of lambda ranges we had assembled above
-    for (block_b, block_e) in all_lambda_ranges:
+    for (block_b, block_e) in natsorted(all_lambda_ranges):
         # Find all blocks with this lambda range
         blocks = all_blocks.search(block_b, block_e)
         # And merge them. concat_block_prod will go read the block data from the fepout files
-        # and merge only their production sub-blocks, keeping an equilibration sub-block chosen arbitrarily .
-        print concat_block_prod(blocks)
+        # and merge only their production fragment, keeping an equilibration fragment chosen arbitrarily.
+        sys.stdout.write(concat_block_prod(blocks))
 
     sys.stderr.write('Kept %d lambda windows.\n' % len(all_blocks))
     return 0
