@@ -28,6 +28,26 @@ SRUN=ibrun
 NAMD=~/bin/namd-2.12
 """
 
+sbatch_preambles['stampede-knl'] = """#!/bin/bash
+#SBATCH -J %(basename)s_%(group_id)d
+#SBATCH -o %(basename)s_%(group_id)d.out
+#SBATCH -e %(basename)s_%(group_id)d.err
+#SBATCH -p normal         # queue
+#SBATCH -N 2              # Number of nodes, not cores (68 real cores per node)
+#SBATCH -n 8              # Total number of MPI tasks (if omitted, n=N)
+#SBATCH -t 48:00:00       # max time
+#SBATCH --mail-user=thomas.joseph@uphs.upenn.edu
+#SBATCH --mail-type=begin --mail-type=end
+
+module restore system
+module load intel/16.0.3
+module load impi/5.1.3
+module load namd/2.12
+
+SRUN=ibrun
+NAMD="$TACC_NAMD_BIN/namd2 +ppn 32 +pemap 0-63+68 +commap 64-67"
+"""
+
 sbatch_preambles['perceval'] = """#!/bin/bash
 #SBATCH -J %(basename)s_%(group_id)d
 #SBATCH -o %(basename)s_%(group_id)d.out
