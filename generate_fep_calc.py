@@ -61,6 +61,8 @@ ap.add_argument('--windows-per-group', type=int, default=5, help='Maximum number
 ap.add_argument('--per-group-num-equil-steps', type=int, default=500000)
 ap.add_argument('--per-window-num-equil-steps', type=int, default=200000)
 ap.add_argument('--per-window-prod-steps', type=int, default=1000000)
+ap.add_argument('--continue', dest='continue_prod', action='store_true', help='Continue from previous run as specified by inputname')
+ap.set_defaults(continue_prod=False)
 args = ap.parse_args()
 
 all_lambdas = np.linspace(0, 1.0, num=args.num_windows, endpoint=False)
@@ -85,6 +87,12 @@ for i in range(len(all_lambdas)):
     else:
         data['inputname'] = '%s%03d' % (args.basename, i - 1)
         data['alchequilsteps'] = args.per_window_num_equil_steps
+
+    # If we are adding on more production sampling to a previous run, we don't need to
+    # do any equilibration, and we should start from the same window from the previous run
+    if args.continue_prod is True:
+        data['alchequilsteps'] = 0
+        data['inputname'] = '%s%03d' % (args.inputname, i)
 
     data['totalsteps'] = data['alchequilsteps'] + args.per_window_prod_steps
     s = """# Do FEP for lambda %(l0)f to %(l1)f
