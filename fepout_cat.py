@@ -48,20 +48,31 @@ def scan_fepout_file(fname):
         line, offset = readline_and_offset_until(f, new_fep_window_re)
         if line == '': return lambdas # Give up on EOF
         # We have started a new window so extract the current lambdas.
-        # This is the equilibration stage.
+        # Assume this is a production fragment until proven otherwise.
         m = new_fep_window_re.match(line)
         l0, l1 = float(m.group(1)), float(m.group(2))
         key = '%f_%f' % (l0, l1)
-        current_lambda = {'fname': fname, 'header_end_offset': header_end_offset, 'equil_start_offset': offset,
+        current_lambda = {'fname': fname, 'header_end_offset': header_end_offset, 'prod_start_offset': offset,
             'delta': l1 - l0}
+        old_offset = offset
         line, offset = readline_and_offset_until(f, equil_end_re)
-        if line == '': return lambdas
-        current_lambda['equil_end_offset'] = f.tell()
-        
-        # Now here is the production part.
-        line, offset = readline_and_offset_until(f, prod_start_re)
-        if line == '': return lambdas
-        current_lambda['prod_start_offset'] = offset
+        if line != '':
+            # Found an end-of-equilibration line, so turns out this wasn't a production fragment after all
+            current_lambda['equil_start_offset'] = current_lambda['prod_start_offset']
+            current_lambda['equil_end_offset'] = f.tell()
+            # Now here is the production part. The line we're looking for only occurs if there was an
+            # equilibration fragment.
+            line, offset = readline_and_offset_until(f, prod_start_re)
+            if line == '': return lambdas
+            current_lambda['prod_start_offset'] = offset
+        else:
+            # Could not find an end-of-equilibration line, so we'll keep going, looking for the
+            # end of the production fragment, below
+            f.seek(old_offset)
+            # Say that the equilibration fragment doesn't exist
+            current_lambda['equil_start_offset'] = current_lambda['equil_end_offset'] = None
+
+        # We've now handled the equilibration block if it exists
         line, offset = readline_and_offset_until(f, prod_end_re)
         if line == '': return lambdas
         current_lambda['prod_end_offset'] = f.tell()
@@ -70,6 +81,8 @@ def scan_fepout_file(fname):
         lambdas[key] = current_lambda
 
 def get_block_from_file(fname, start, end):
+    if None in (start, end):
+        return None
     with open(fname) as f:
         f.seek(start)
         return f.read(end - start)
@@ -99,7 +112,7 @@ def trim_timesteps_from_block(block, numsteps=0):
     return new_block
 
 
-def concat_block_prod(blocks):
+def concat_block_prod(blocks, ignore_steps=0):
     """Returns a string containing combined production parts of the given blocks, including whatever header
     is necessary for VMD ParseFEP to be happy."""
 
@@ -166,53 +179,53 @@ def concat_block_prod(blocks):
     # for line in comments[0][0]:
     #    out_buf.write(line)
 
-    def emit_fepenergy_block(out_buf, lines, first_timestep=0):
+    def emit_fepenergy_block(out_buf, lines, first_timestep=0, ignore_steps=0):
         # FepEnergy: 50 ...
         # FepEnergy: 100 ...
         # Extract the delta between timesteps, which requires at least two lines to be present
         assert len(lines) > 2, 'FepEnergy block is only %d lines which is not very long' % len(lines)
         delta = int(lines[1].split()[1]) - int(lines[0].split()[1])
+        lines_to_skip = ignore_steps / delta
 
         timestep = first_timestep
+        line_count = 0
         for line in lines:
-            # FepEnergy: %6d %14.4f %14.4f...
-            out_buf.write('FepEnergy: %6d' % timestep)
-            tokens = line.strip().split()
-            for i in range(2, len(tokens)):
-                out_buf.write(' %14.4f' % float(tokens[i]))
-            out_buf.write('\n')
-
-            # Renumber all the lines
-            timestep += delta
+            # Write this line if we weren't supposed to skip it
+            if line_count >= lines_to_skip:
+                # FepEnergy: %6d %14.4f %14.4f...
+                out_buf.write('FepEnergy: %6d' % timestep)
+                tokens = line.strip().split()
+                for i in range(2, len(tokens)):
+                    out_buf.write(' %14.4f' % float(tokens[i]))
+                out_buf.write('\n')
+                # Renumber all the lines
+                timestep += delta
+            line_count += 1
 
         return timestep
 
 
     # Next step: spit out an equilibration fragment, which we will take to be the first one we found.
-    # TODO: We could in principle just look for a block with more than one FepEnergy fragment in order to
-    # support just continuing a production run.
-
-    # Spit out the equilibration block from any of the blocks, taking note of the last timestep
+    # Take note of the last timestep
     equil_data = None
     for b in blocks:
         equil_data = get_block_from_file(b.data['fname'], b.data['equil_start_offset'], b.data['equil_end_offset'])
-        break
+        if equil_data is not None:
+            break
 
-    in_buf = StringIO.StringIO(equil_data)
     timestep, last_timestep = 0, 0
-    for line in in_buf.readlines():
-        if line.startswith('FepEnergy:'):
-            last_timestep = timestep
-            timestep = int(line.split()[1])
-        out_buf.write(line)
-    timestep += timestep - last_timestep
-
-    # Spit out the comments that say we're done with equilibration now here's production
-    # for line in comments[0][1]: out_buf.write(line)
+    if equil_data is not None:
+        in_buf = StringIO.StringIO(equil_data)
+        for line in in_buf.readlines():
+            if line.startswith('FepEnergy:'):
+                last_timestep = timestep
+                timestep = int(line.split()[1])
+            out_buf.write(line)
+        timestep += timestep - last_timestep
 
     # Iterate over each block index and spit out the renumbered prod block
     for block_i in range(len(fepenergy)):
-        timestep = emit_fepenergy_block(out_buf, fepenergy[block_i][0], first_timestep=timestep)
+        timestep = emit_fepenergy_block(out_buf, fepenergy[block_i][0], first_timestep=timestep, ignore_steps=ignore_steps)
 
     # Now emit the footer (from the last block)
     for line in comments[-1][1]:
@@ -326,7 +339,7 @@ def main():
         blocks = all_blocks.search(block_b, block_e)
         # And merge them. concat_block_prod will go read the block data from the fepout files
         # and merge only their production fragment, keeping an equilibration fragment chosen arbitrarily.
-        sys.stdout.write(concat_block_prod(blocks))
+        sys.stdout.write(concat_block_prod(blocks, ignore_steps=args.ignore_steps))
 
     sys.stderr.write('Kept %d lambda windows.\n' % len(all_blocks))
     return 0
