@@ -324,6 +324,8 @@ def main():
     print >>sys.stderr, 'Scale factor for QM energies: %.4f.' % args.scale
     print >>sys.stderr, 'Moving MM water by this much: %.2f Angstroms (negative means closer to ligand).' % args.shift
     print >>sys.stderr, ''
+    print >>sys.stderr, 'Single-point ligand energy: %.4f kcal/mol' % sp_energies[-1]
+    print >>sys.stderr, 'Single-point water energy: %.4f kcal/mol' % sp_wat_energies[-1]
     print >>sys.stderr, 'Interaction energies - single TIP3P vs ligand:'
 
     out = None
