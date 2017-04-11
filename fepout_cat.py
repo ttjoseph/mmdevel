@@ -266,6 +266,7 @@ def load_spec_file(specfile):
 def main():
     ap = argparse.ArgumentParser(description='Stitch together NAMD fepout files, discarding incomplete lambda windows, and dump the result to stdout')
     ap.add_argument('--spec', help='FEP specification that dictates which lambda ranges should be used from which fepout files')
+    ap.add_argument('--generate-spec', action='store_true', help='Generate a prototype specification file from the fepout files specified')
     ap.add_argument('--ignore-steps', type=int, default=0, help='Ignore this many steps at the start of each production window')
     ap.add_argument('fepout_file', nargs='+', help='.fepout files, in order of lambdas you want')
     args = ap.parse_args()
@@ -274,10 +275,40 @@ def main():
     # This way we can avoid keeping big blocks of data around in memory.
     spec, spec_fepout_files = None, set()
 
+    # It's annoying to generate spec files by hand, so here at user request we scan all fepout files
+    # specified and dump which blocks they contain, in a convenient YAML format
+    if args.generate_spec:
+        sys.stderr.write('Generating a spec file, to stdout.\n')
+        sys.stderr.write('It may not make sense, so please check it manually.\n')
+        sys.stderr.write('Scanning fepout files...\n')
+
+        # Make a list of all blocks
+        all_fepout_files = set(args.fepout_file)
+        per_file_lambdas = []
+        for fname in natsorted(all_fepout_files):
+            per_file_lambdas.append(scan_fepout_file(fname))
+        # Rearrange the list into a dict index by lambda, merging where necessary
+        all_lambdas = {}
+        for lambdas in per_file_lambdas:
+            for key in lambdas.keys():
+                if key in all_lambdas:
+                    all_lambdas[key].append(lambdas[key]['fname'])
+                else:
+                    all_lambdas[key] = [lambdas[key]['fname'],]
+
+        # Spit out the blocks lambda dict in YAML format
+        for key in natsorted(all_lambdas.keys()):
+            print '"%s":' % key.replace('_', ' ')
+            for fname in all_lambdas[key]:
+                print '  - %s' % fname
+
+        # Don't do anything else
+        return 0
+
     # If user provides a yaml file that describes which lambda ranges can come from which files,
     # go through each block that we inhaled and keep only those which meet the criteria.
     # Bonus TODO: Maybe check to ensure that we have covered the entire transformation.
-    if args.spec:
+    elif args.spec:
         if not isfile(args.spec):
             sys.stderr.write('Cannot find your FEP spec file %s.' % args.spec)
             return 1
