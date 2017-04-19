@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Mirror, to or from a remote host, recursively, the specified relative directory,
+# even though $HOME here and there may be different.
+#
+# Usage: mirror <to|from> <host> <directory>
+
+cmd=$1
+server=$2
+here=$PWD/
+homeslash=$HOME/
+path_on_server=${here/$homeslash/}
+
+case $cmd in
+	from)
+		target_rel_path=${3%/}
+		echo rsync -avz --progress ${server}:${path_on_server}${target_rel_path} .
+		rsync -avz --progress ${server}:${path_on_server}${target_rel_path} .
+	;;
+	to)
+		src_rel_path=${3%/}
+		target_rel_path=${4%/}
+		echo rsync -avz --progress $src_rel_path ${server}:${path_on_server}${target_rel_path}
+		rsync -avz --progress $src_rel_path ${server}:${path_on_server}${target_rel_path}
+	;;
+esac
