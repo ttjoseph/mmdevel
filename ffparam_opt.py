@@ -597,6 +597,27 @@ def main():
     # associates these energies to the actual dihedral angle we varied. Amazing!
     results_to_html(data, '%s.dihedral_energy.html' % splitext(basename(system['psf']))[0])
 
+    # Write each conformation to a single PDB file with multiple frames
+    # Load template PDB and its associated PSF
+    pdb = PDB(system['pdb'])
+
+    # Replace coordinates with the supplied ones and write out a new (temporary) PDB
+    pdb_fname = '%s.frames.pdb' % splitext(basename(system['psf']))[0]
+    pdb_fp = open(pdb_fname, 'w')
+
+    for i in range(len(data)):
+        coords = data[i]['coords']
+        for j in range(len(pdb.atoms)):
+            pdb.atoms[j].x = coords[j][0]
+            pdb.atoms[j].y = coords[j][1]
+            pdb.atoms[j].z = coords[j][2]
+        pdb_fp.write('MODEL %d\n' % i)
+        pdb.write(pdb_fp)
+        pdb_fp.write('TER\nENDMDL\n')
+
+    pdb_fp.close()
+    print('Wrote coordinates of each frame to %s' % pdb_fname)
+
     # End goal here is to be able to dynamically edit the PRM file we are creating
     # for this ligand, and watch the MM energy surface change in relation to the QM
     # energy surface. Should in the end speed up this whole process.
