@@ -232,17 +232,15 @@ run 0
     p = subprocess.Popen([data['namd'], namdconf2_fname], stdout=subprocess.PIPE, cwd=getcwd())
     (namdlog, namdstderr) = p.communicate()
 
-    #DEBUG
-    # if data['index'] in (88, 89): print(namdlog)
-
     # NAMD shouldn't be complaining. If it is, tell the user
     if namdstderr is not None:
         print(namdstderr)
 
-    # DEBUG
-    # open(outputname + '.namd2.log', 'w').write(namdlog)
-
     # TODO: Harvest the dihedral angles we are trying to fit
+
+    # Get individual energy types
+    for energy_type in ('BOND', 'ANGLE', 'DIHED', 'IMPRP', 'ELECT', 'VDW'):
+        data[energy_type] = get_energy_from_namd_log(namdlog, energy_type)
     data['mm_energy'] = get_energy_from_namd_log(namdlog, 'TOTAL')
     print('%s: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (outputname,
                 data['mm_energy'],
@@ -612,6 +610,8 @@ def main():
             pdb.atoms[j].y = coords[j][1]
             pdb.atoms[j].z = coords[j][2]
         pdb_fp.write('MODEL %d\n' % i)
+        for energy_type in ('BOND', 'ANGLE', 'DIHED', 'IMPRP', 'ELECT', 'VDW'):
+            pdb_fp.write('REMARK  42 %s: %f\n' % (energy_type, data[i][energy_type]))
         pdb.write(pdb_fp)
         pdb_fp.write('TER\nENDMDL\n')
 
