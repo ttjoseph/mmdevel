@@ -198,8 +198,6 @@ run 0
     # NAMD shouldn't be complaining. If it is, tell the user
     if namdstderr is not None:
         print(namdstderr)
-    #DEBUG
-    # if data['index'] in (88, 89): print(namdlog)
 
     # Now run NAMD a second time to calculate a single point energy
     # using the minimized coordinates from the previous NAMD run.
@@ -236,8 +234,6 @@ run 0
     if namdstderr is not None:
         print(namdstderr)
 
-    # TODO: Harvest the dihedral angles we are trying to fit
-
     # Get individual energy types
     for energy_type in ('BOND', 'ANGLE', 'DIHED', 'IMPRP', 'ELECT', 'VDW'):
         data[energy_type] = get_energy_from_namd_log(namdlog, energy_type)
@@ -250,8 +246,6 @@ run 0
     # Delete a file without caring whether it succeeds, such as if the file didn't exist in the first place
     def unlink_dontcare(fname):
         try:
-            #DEBUG
-            # if data['index'] not in (89, 90):
             unlink(fname)
         except:
             pass # YOLO
