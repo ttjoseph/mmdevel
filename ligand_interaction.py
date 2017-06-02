@@ -82,8 +82,8 @@ if __name__ == '__main__':
     # Glean PSF and force field parameters from NAMD simulation input file
     print >>sys.stderr, 'Reading NAMD simulation config', args.namdconf
     with open(args.namdconf) as f:
-        psf_re = re.compile(r'structure\s+(\S+)')
-        prm_re = re.compile(r'parameters\s+(\S+)')
+        psf_re = re.compile(r'structure\s+([\w/.]+)')
+        prm_re = re.compile(r'parameters\s+([\w/.]+)')
         for line in f:
             m = psf_re.match(line.strip())
             if m: psf_filename = m.group(1)
