@@ -3,6 +3,7 @@ import sys
 import argparse
 import csv
 import re
+import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 import cycler
@@ -12,7 +13,7 @@ from MDAnalysis.analysis.distances import distance_array
 from ffparam_charges_vs_qm import load_prm, COULOMB
 
 
-def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec='protein or nucleic'):
+def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
     """
     Given an MDAnalysis universe, calculate the pairwise interaction energies between the specified
     ligand and the solute.
@@ -20,10 +21,19 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec='protein or nucl
     :param ligand_spec: Specification to find the ligand molecule, such as "resname APM"
     :param prm: Dict containing Lennard-Jones parameters by atom type, as read from ffparam_charges_vs_qm.load_prm
     :param solute_spec: Specification to find the solute, such as "protein or nucleic"
+    :param patches: A dict containing modifications to the ligand to be applied, such as nudging charges.
+        Should be like {SKE_N1_chargedelta: 0.1}, which increases the charge of the N1 atom of SKE by 0.1.
     :return: A tuple containing electrostatic and Lennard-Jones energies, as NxM arrays, with N ligand atoms and M frames
     """
     ligand_atoms = u.select_atoms(ligand_spec)
     solute_atoms = u.select_atoms(solute_spec)
+    if len(ligand_atoms) == 0:
+        print >>sys.stderr, 'Cannot find any ligand atoms. Did you provide the correct residue name?'
+        sys.exit(1)
+    if len(solute_atoms) == 0:
+        print >>sys.stderr, 'Cannot find any solute atoms. Did you provide the correct spec?'
+        sys.exit(1)
+
     ligand_rmin2 = np.array([prm[a.type]['rmin2'] for a in ligand_atoms])
     ligand_epsilon = np.array([prm[a.type]['epsilon'] for a in ligand_atoms])
     solute_rmin2 = np.array([prm[a.type]['rmin2'] for a in solute_atoms])
@@ -37,9 +47,17 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec='protein or nucl
     # we can tolerate the slowness.
     charge_prod = np.zeros((len(ligand_atoms), len(solute_atoms)))
     lj6_partial, eps_partial = np.zeros_like(charge_prod), np.zeros_like(charge_prod)
+    # Fill in default of no patches
+    if patches is None: patches = {}
 
     for ligand_i in range(len(ligand_atoms)):
-        ligand_charge = COULOMB * ligand_atoms[ligand_i].charge
+        ligand_atom = ligand_atoms[ligand_i]
+        # Modify charge of this ligand atom if user asked us to
+        chargedelta_key = '%s_%s_chargedelta' % (ligand_atom.resname, ligand_atom.name)
+        if chargedelta_key in patches:
+            ligand_atom.charge += patches[chargedelta_key]
+
+        ligand_charge = COULOMB * ligand_atom.charge
         l_rmin2, l_eps = ligand_rmin2[ligand_i], ligand_epsilon[ligand_i]
         for solute_i in range(len(solute_atoms)):
             charge_prod[ligand_i, solute_i] = ligand_charge * solute_atoms[solute_i].charge
@@ -76,6 +94,9 @@ if __name__ == '__main__':
     ap.add_argument('ligand_resname', help='Ligand residue name (e.g. SKE, APM)')
     ap.add_argument('namdconf', help='NAMD configuration containing "parameters" and "structure" keywords from which to glean PSF and force field filenames')
     ap.add_argument('dcd', nargs='+', help='DCD trajectories to go with the PSF file specified in namdconf')
+    ap.add_argument('--solute-spec', default='protein or nucleic', help='Specify which part of the system we care about ligand interactions with')
+    ap.add_argument('--dont-plot-atomtypes', default='HA1,HA3,HP', help='Atom types not to plot, separated by commas')
+    ap.add_argument('--patches', help='YAML file containing patches to ligand parameters, such as charges')
     args = ap.parse_args()
 
     psf_filename, prm_filenames = None, []
@@ -83,8 +104,8 @@ if __name__ == '__main__':
     # Glean PSF and force field parameters from NAMD simulation input file
     print >>sys.stderr, 'Reading NAMD simulation config', args.namdconf
     with open(args.namdconf) as f:
-        psf_re = re.compile(r'structure\s+([\w/.]+)')
-        prm_re = re.compile(r'parameters\s+([\w/.]+)')
+        psf_re = re.compile(r'structure\s+([\w\-/.]+)')
+        prm_re = re.compile(r'parameters\s+([\w\-/.]+)')
         for line in f:
             m = psf_re.match(line.strip())
             if m: psf_filename = m.group(1)
@@ -93,6 +114,7 @@ if __name__ == '__main__':
 
     print >>sys.stderr, 'Guessed PSF filename:', psf_filename
     print >>sys.stderr, 'Guessed force field parameter files:', ', '.join(prm_filenames)
+    print >>sys.stderr, 'Solute spec:', args.solute_spec
 
     u = mda.Universe(psf_filename, args.dcd)
 
@@ -100,13 +122,27 @@ if __name__ == '__main__':
     for prm_fname in prm_filenames:
         prm.update(load_prm(prm_fname))
 
-    print >>sys.stderr, 'Loaded %d MM parameters' % len(prm)
+    print >>sys.stderr, 'Loaded %d MM parameters.' % len(prm)
+
+    patches = None
+    if args.patches is not None:
+        patches = yaml.load(open(args.patches))
+        print >>sys.stderr, 'Ligand patches:', patches
 
     ligand_spec = 'resname %s' % args.ligand_resname
-    ligand_atoms = u.select_atoms(ligand_spec)
-    labels = ['%d %s %.3f' % (a.index - ligand_atoms[0].index + 1, a.type, a.charge) for a in ligand_atoms]
 
-    electro, lj = calc_mm_interaction_energy(u, ligand_spec, prm)
+    electro, lj = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec, patches=patches)
+
+    ligand_atoms = u.select_atoms(ligand_spec)
+    labels = ['%s %d %.3f' % (a.type, a.index - ligand_atoms[0].index + 1, a.charge) for a in ligand_atoms]
+    # Make a list of labels specified by the user not to include in the graph, because they are boring
+    # atoms like aliphatic hydrogens with a charge of +0.09
+    dont_plot_labels = []
+    for l in labels:
+        for atomtype in args.dont_plot_atomtypes.split(','):
+            if l.startswith('%s ' % atomtype):
+                dont_plot_labels.append(l)
+    print >>sys.stderr, 'Will not plot:', ', '.join(dont_plot_labels)
 
     # Try not to repeat line styles
     pretty_cycler = cycler.cycler(lw=[0.3, 0.8, 1.4]) * cycler.cycler('ls', ['-', ':']) * plt.rcParams['axes.prop_cycle']
@@ -122,13 +158,17 @@ if __name__ == '__main__':
                 writer.writerow(row)
         print >>sys.stderr, 'Wrote energy data to %s.csv' % prefix
 
-        d = pd.read_csv('%s.csv' % prefix)
+        d = pd.read_csv('%s.csv' % prefix).drop(dont_plot_labels, axis=1)
         plt.figure(figsize=(8, 4.5)) # 16:9 aspect ratio
         plt.autoscale(tight=True)
         plt.plot(d)
-        plt.title('%s energy for %s (%s)' % (datatype.capitalize(), args.ligand_resname, args.namdconf))
+        plt.figtext(0.01, 0.99, 'Average %s energy: %.2f kcal/mol' % (datatype, np.sum(np.mean(d))), fontsize=5,
+                    verticalalignment='top')
+        plt.title('%s energy for %s with %s (%s)' % (datatype.capitalize(), args.ligand_resname, args.solute_spec,
+                                                     args.namdconf))
         plt.xlabel('Trajectory frame')
         plt.ylabel('Energy (kcal/mol)')
-        plt.legend(labels, fontsize=4, loc='upper left', bbox_to_anchor=(1.0, 1.15))
+
+        plt.legend(list(d), fontsize=4, loc='upper left', bbox_to_anchor=(1.0, 1.15))
         plt.savefig('%s.pdf' % prefix)
         print >>sys.stderr, 'Wrote a pretty picture to %s.pdf' % prefix
