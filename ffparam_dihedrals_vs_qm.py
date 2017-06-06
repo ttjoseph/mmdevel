@@ -3,7 +3,7 @@
 # Helper for optimizing force field parameters using NAMD
 import argparse
 import re
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 import tempfile
 import sys
 from os import fdopen, unlink, getcwd
@@ -293,7 +293,8 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
         d.update(dihedral_results[i])
         data.append(d)
 
-    p = Pool(14) # TODO: Make this a command line parameter but default to number of cores on system
+    # Optimistically assume one core's worth of time will be spent in I/O starting up namd2 instances
+    p = Pool(cpu_count() + 1)
     data = p.map(calc_one_mm_energy, data)
     # For debugging only - stack trace in Python 2 is ruined by Pool
     # for i in range(len(data)):
