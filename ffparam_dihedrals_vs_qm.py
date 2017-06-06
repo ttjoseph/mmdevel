@@ -438,7 +438,6 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24, out=sys.stdou
     # We use scipy.interpolate.griddata. This takes coordinates (dihedral angles), values
     # (energy differences), and xi (CMAP grid coordinates), and returns interpolated values.
     cmap_raw = griddata(coords, values, xi, method='linear', fill_value=0.0)
-    sys.stderr.write('test: %f\n' % (cmap_raw[4*24+5]))
 
     # Now to spit out the CMAP table so that NAMD/CHARMM will parse it
     out.write('%s %s %d\n' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
