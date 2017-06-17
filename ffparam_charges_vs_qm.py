@@ -24,8 +24,8 @@ def parse_waterint_log(filename):
     i = 0
     while i < len(lines):
         if re.search(r'Error termination', lines[i]):
-            sys.stderr.write('Careful, %s has a Gaussian error termination.' % filename)
-            return energies
+            sys.stderr.write('Careful, %s has a Gaussian error termination.\n' % filename)
+            return energies, coords, optimized_params
         
         if re.search(r'Normal termination of Gaussian', lines[i]):
             # All is well
