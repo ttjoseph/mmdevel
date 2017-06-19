@@ -8,5 +8,5 @@ sbatch <<FOO
 #SBATCH -n $nproc
 
 g09 $1
-echo "Done with $1" | ~/bin/slack-ttjoseph
+echo "Done with $1 in \$PWD" | ~/bin/slack-ttjoseph
 FOO
