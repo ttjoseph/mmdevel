@@ -1,3 +1,3 @@
 #!/bin/bash
 
-squeue -h -u $USER -o "%10i %20j %44Z %2t%10M %R" | sed s#$HOME#~#
+squeue -h -u $USER -o "%10i %20j %44Z %2t%10M %C/%R" | sed s#$HOME#~#
