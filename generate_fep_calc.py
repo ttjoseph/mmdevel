@@ -76,7 +76,7 @@ ap = argparse.ArgumentParser(description='Generate mildly embarrasingly parallel
 ap.add_argument('basename', help='Base filename, e.g. "fep", such that we generate fep<n>.namd which sources common_fep.namd')
 ap.add_argument('inputname', help='Per-group input system name (e.g. equilibrated system)')
 ap.add_argument('clustername', help='Supercomputer cluster you are using', default='perceval')
-ap.add_argument('--num-windows', type=int, default=50, help='Number of lambda windows')
+ap.add_argument('--num-windows', type=int, default=30, help='Number of lambda windows')
 ap.add_argument('--windows-per-group', type=int, default=5, help='Maximum number of lambda windows per batch job')
 ap.add_argument('--per-group-num-equil-steps', type=int, default=500000)
 ap.add_argument('--per-window-num-equil-steps', type=int, default=200000)
@@ -85,22 +85,24 @@ ap.add_argument('--continue', dest='continue_prod', action='store_true', help='C
 ap.set_defaults(continue_prod=False)
 args = ap.parse_args()
 
-all_lambdas = np.linspace(0, 1.0, num=args.num_windows, endpoint=False)
-delta = all_lambdas[1] - all_lambdas[0]
-group_id = -1
-for i in range(len(all_lambdas)):
+x = np.linspace(0, 1.0, num=(args.num_windows+1), endpoint=True)
+all_lambdas = np.sin((np.pi/2)*x)
+print('Here are the %d lambda windows:' % args.num_windows)
+print(all_lambdas)
+group_id = 0
+
+for i in range(len(all_lambdas)-1):
     starting_a_group = True if i % args.windows_per_group == 0 else False
     if starting_a_group:
         group_id += 1
 
-    l0, l1 = all_lambdas[i], all_lambdas[i] + delta
     data = {
         'basename': args.basename,
         'inputname': args.inputname,
         'outputname': '%s%03d' % (args.basename, i),
         'group_id': group_id,
-        'l0': l0,
-        'l1': l1
+        'l0': all_lambdas[i],
+        'l1': all_lambdas[i+1]
     }
     if starting_a_group:
         data['alchequilsteps'] = args.per_group_num_equil_steps
