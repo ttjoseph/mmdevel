@@ -36,7 +36,7 @@ def scan_fepout_file(fname):
     new_fep_window_re = re.compile(r'#NEW FEP WINDOW: LAMBDA SET TO ([\d.]+) LAMBDA2 ([\d.]+)')
     equil_end_re = re.compile(r'#\d+ STEPS OF EQUILIBRATION AT LAMBDA [\d.]+ COMPLETED')
     prod_start_re = re.compile(r'#STARTING COLLECTION OF ENSEMBLE AVERAGE')
-    prod_end_re = re.compile(r'#Free energy change for lambda window \[ ([\d.]+) ([\d.]+) \] is ([-\d.]+) ; net change until now is [-\d.]+')
+    prod_end_re = re.compile(r'#Free energy change for lambda window \[ ([\d.]+) ([\d.]+) \] is ([-\deE.]+) ; net change until now is [-\deE.]+')
 
     f = open(fname)
     # Eat the start of file header, which should span two lines
