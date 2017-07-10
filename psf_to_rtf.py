@@ -10,15 +10,19 @@ def main():
     args = ap.parse_args()
 
     u = mda.Universe(args.psf)
+    total_charge = 0.0
+    for a in u.atoms:
+        total_charge += a.charge
+    total_charge = 0.0 if total_charge == -0.0 else total_charge
     # Print atoms and bonds. This is straightforward enough.
     print("""* Converted from:
 * %s
 *
 36 1
 
-RESI %s      0.000
+RESI %s      %.3f
 GROUP
-""" % (args.psf, u.atoms[0].resname))
+""" % (args.psf, u.atoms[0].resname, total_charge))
     for a in u.atoms:
         print('ATOM %-6s %-6s %8.6f' % (a.name, a.type, a.charge))
     print('')
