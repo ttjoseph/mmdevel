@@ -34,7 +34,7 @@ GROUP
         
         for line in f:
             tokens = line.strip().split()
-            if len(tokens) > 1 and tokens[1].startswith('!NCRTERM'):
+            if len(tokens) > 1 and '!NCRTERM' in line:
                 in_cmap_block = True
                 total_num_cmap_tokens = int(tokens[0]) * 8
             elif len(tokens) > 1 and tokens[1].startswith('!'):
