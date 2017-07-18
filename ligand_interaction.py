@@ -95,7 +95,7 @@ if __name__ == '__main__':
     ap.add_argument('namdconf', help='NAMD configuration containing "parameters" and "structure" keywords from which to glean PSF and force field filenames')
     ap.add_argument('dcd', nargs='+', help='DCD trajectories to go with the PSF file specified in namdconf')
     ap.add_argument('--solute-spec', default='protein or nucleic', help='Specify which part of the system we care about ligand interactions with')
-    ap.add_argument('--dont-plot-atomtypes', default='HA1,HA3,HP', help='Atom types not to plot, separated by commas')
+    ap.add_argument('--dont-plot-atomtypes', default='HA1,HA3,HP,HGA2,HGAAM1', help='Atom types not to plot, separated by commas')
     ap.add_argument('--patches', help='YAML file containing patches to ligand parameters, such as charges')
     args = ap.parse_args()
 
@@ -158,17 +158,18 @@ if __name__ == '__main__':
                 writer.writerow(row)
         print >>sys.stderr, 'Wrote energy data to %s.csv' % prefix
 
-        d = pd.read_csv('%s.csv' % prefix).drop(dont_plot_labels, axis=1)
+        orig_d = pd.read_csv('%s.csv' % prefix)
+        d = orig_d.drop(dont_plot_labels, axis=1)
         plt.figure(figsize=(8, 4.5)) # 16:9 aspect ratio
         plt.autoscale(tight=True)
         plt.plot(d)
-        plt.figtext(0.01, 0.99, 'Average %s energy: %.2f kcal/mol' % (datatype, np.sum(np.mean(d))), fontsize=5,
-                    verticalalignment='top')
+        plt.figtext(0.01, 0.99, 'Average %s energy, including any atom types not plotted: %.2f kcal/mol' % \
+            (datatype, np.sum(np.mean(orig_d))), fontsize=5, verticalalignment='top')
         plt.title('%s energy for %s with %s (%s)' % (datatype.capitalize(), args.ligand_resname, args.solute_spec,
                                                      args.namdconf))
         plt.xlabel('Trajectory frame')
         plt.ylabel('Energy (kcal/mol)')
 
-        plt.legend(list(d), fontsize=4, loc='upper left', bbox_to_anchor=(1.0, 1.15))
+        plt.legend(list(d), fontsize=4, loc='lower left', bbox_to_anchor=(1.0, 0.0))
         plt.savefig('%s.pdf' % prefix)
         print >>sys.stderr, 'Wrote a pretty picture to %s.pdf' % prefix
