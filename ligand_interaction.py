@@ -39,7 +39,7 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
     solute_rmin2 = np.array([prm[a.type]['rmin2'] for a in solute_atoms])
     solute_epsilon = np.array([prm[a.type]['epsilon'] for a in solute_atoms])
 
-    # Precompute the pairwise charge products, which we will later scale by inverse distance,
+    # We will be precomputing the pairwise charge products, which we will later scale by inverse distance,
     # as well as part of the Lennard-Jones calculation.
     # We can do this otherwise horrible O(n^2) calculation because we know we have a relatively
     # small number of ligand atoms, so the size of the resulting matrix is not cataclysmic.
@@ -50,6 +50,20 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
     # Fill in default of no patches
     if patches is None: patches = {}
 
+    # Modify solute atom parameters according to user-specified patches.
+    # This mechanism is different from the ligand one because in the ligand case we want to
+    # modify all ligand molecules in the same way. In this case, we really just want one
+    # atom to change. Obviously this means there is no clear way to only modify one ligand
+    # molecule, but I guess that can be added later if needed.
+    for solute_i in range(len(solute_atoms)):
+        solute_atom = solute_atoms[solute_i]
+        # HSD_123_HB2_chargedelta: -0.5
+        chargedelta_key = '%s_%d_%s_chargedelta' % (solute_atom.resname, solute_atom.resid, solute_atom.name)
+        if chargedelta_key in patches:
+            solute_atom.charge += patches[chargedelta_key]
+            print >>sys.stderr, 'HOORAY %s %f' % (chargedelta_key, solute_atom.charge)
+
+    # Modify ligand atom charges according to the patches specified by the user
     for ligand_i in range(len(ligand_atoms)):
         ligand_atom = ligand_atoms[ligand_i]
         # Modify charge of this ligand atom if user asked us to
@@ -127,7 +141,7 @@ if __name__ == '__main__':
     patches = None
     if args.patches is not None:
         patches = yaml.load(open(args.patches))
-        print >>sys.stderr, 'Ligand patches:', patches
+        print >>sys.stderr, 'Patches:', patches
 
     ligand_spec = 'resname %s' % args.ligand_resname
 
