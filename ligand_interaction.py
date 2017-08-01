@@ -13,7 +13,7 @@ from MDAnalysis.analysis.distances import distance_array
 from ffparam_charges_vs_qm import load_prm, COULOMB
 
 
-def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
+def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, vdw_shift=0.0, patches=None):
     """
     Given an MDAnalysis universe, calculate the pairwise interaction energies between the specified
     ligand and the solute.
@@ -21,6 +21,8 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
     :param ligand_spec: Specification to find the ligand molecule, such as "resname APM"
     :param prm: Dict containing Lennard-Jones parameters by atom type, as read from ffparam_charges_vs_qm.load_prm
     :param solute_spec: Specification to find the solute, such as "protein or nucleic"
+    :param vdw_shift: In L-J calculations only, increase interparticle distance by this many Angstroms
+        for the sake of softcore FEP (see the documentation for alchVdwShiftCoeff in NAMD)
     :param patches: A dict containing modifications to the ligand to be applied, such as nudging charges.
         Should be like {SKE_N1_chargedelta: 0.1}, which increases the charge of the N1 atom of SKE by 0.1.
     :return: A tuple containing electrostatic and Lennard-Jones energies, as NxM arrays, with N ligand atoms and M frames
@@ -61,7 +63,6 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
         chargedelta_key = '%s_%d_%s_chargedelta' % (solute_atom.resname, solute_atom.resid, solute_atom.name)
         if chargedelta_key in patches:
             solute_atom.charge += patches[chargedelta_key]
-            print >>sys.stderr, 'HOORAY %s %f' % (chargedelta_key, solute_atom.charge)
 
     # Modify ligand atom charges according to the patches specified by the user
     for ligand_i in range(len(ligand_atoms)):
@@ -94,6 +95,10 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
         # Lennard-Jones energy calculation was:
         # lj6 = ((a_rmin2 + prm[b.type]['rmin2']) / dist)**6
         # ligand_lj[ligand_i] += (a_epsilon * prm[b.type]['epsilon'])**0.5 * (lj6**2 - 2*lj6)
+
+        # For FEP softcore purposes, shift the interparticle distance
+        if vdw_shift != 0.0:
+            dists += vdw_shift
         lj6 = lj6_partial / (dists**6)
         frame_lj = np.sum(eps_partial * (lj6**2 - 2*lj6), 1)
 
@@ -101,6 +106,101 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, patches=None):
         lj.append(frame_lj)
 
     return electro, lj
+
+
+def scale_factors_for_lambda(lambda_val, alchElecLambdaStart=0.5, alchVdwLambdaEnd=0.5, annihilate=True):
+    """
+    Returns scale factors for electrostatic and L-J energies for given softcore FEP parameters and lambda
+
+    :param lambda_val: The FEP lambda, which should be from 0.0 to 1.0
+    :param alchElecLambdaStart: Same as with NAMD
+    :param alchVdwLambdaEnd: Same with NAMD
+    :return: electro_scale, lj_scale
+    """
+
+    # TODO: Distinguish between annihilation and exnihilation, because the meanings of the parameters
+    # TODO: depend on it.
+    # TODO: When annihilating, alchElecLambdaStart actually acts like a "alchElecLambdaEnd"
+
+    if annihilate is True:
+        lambda_val = 1.0 - lambda_val
+
+    electro_scale, lj_scale = 0.0, 1.0
+    if lambda_val >= alchElecLambdaStart:
+        electro_scale = (lambda_val - alchElecLambdaStart) / (1.0 - alchElecLambdaStart)
+
+    if lambda_val <= alchVdwLambdaEnd:
+        lj_scale = lambda_val / alchVdwLambdaEnd
+
+    return electro_scale, lj_scale
+
+
+# TODO: Since this is just scaling, we don't have to sum across ligand atoms...do we?
+def do_fep_scaling(electro, lj, lambda0, lambda1, alchElecLambdaStart, alchVdwLambdaEnd):
+    electro_scale0, lj_scale0 = scale_factors_for_lambda(args.lambda0, alchElecLambdaStart, alchVdwLambdaEnd)
+    electro_scale1, lj_scale1 = scale_factors_for_lambda(args.lambda1, alchElecLambdaStart, alchVdwLambdaEnd)
+
+    # Now, scale the energies
+    electro0, lj0, electro1, lj1 = [], [], [], []
+    for i in range(len(electro)):
+        electro0.append(electro[i] * electro_scale0)
+        lj0.append(lj[i] * lj_scale0)
+        electro1.append(electro[i] * electro_scale1)
+        lj1.append(lj[i] * lj_scale1)
+
+    return electro0, lj0, electro1, lj1
+
+
+# TODO: If weights are extremely nonuniform, complain that the energies1 do not cover a similar enough
+# TODO: part of the phase space represented by energies0, and therefore the reweighted energy is probably
+# TODO: far off.
+def reweight_energies(energies0, energies1):
+    e0 = np.array(energies0)
+    e1 = np.array(energies1)
+    assert len(e0) == len(e1)
+
+    beta = 1.0/0.6
+    weights = np.exp(-beta * (e1 - e0))
+    weights /= np.sum(weights)
+
+    print >>sys.stderr, 'Then: %.3f  Now: %.3f' % (np.sum(e0)/np.size(e0), np.sum(e1 * weights))
+
+    return(e1 * weights)
+
+
+# TODO: This should just take a CSV filename or something
+def generate_plot(datatype, data, dont_plot_atomtypes=''):
+    # Make a list of labels specified by the user not to include in the graph, because they are boring
+    # atoms like aliphatic hydrogens with a charge of +0.09
+    dont_plot_labels = []
+    for l in labels:
+        for atomtype in dont_plot_atomtypes.split(','):
+            if l.startswith('%s ' % atomtype):
+                dont_plot_labels.append(l)
+    print >>sys.stderr, 'Will not plot:', ', '.join(dont_plot_labels)
+
+    # Try not to repeat line styles
+    pretty_cycler = cycler.cycler(lw=[0.3, 0.8, 1.4]) * cycler.cycler('ls', ['-', ':']) * plt.rcParams['axes.prop_cycle']
+    plt.rc('axes', prop_cycle=pretty_cycler)
+
+    orig_d = pd.read_csv('%s_%s.csv' % (datatype, ligand_resname))
+    print >> sys.stderr, 'Average %s energy: %.2f kcal/mol' % (datatype, np.sum(np.mean(orig_d)))
+
+    # Generate plot
+    d = orig_d.drop(dont_plot_labels, axis=1)
+    plt.figure(figsize=(8, 4.5))  # 16:9 aspect ratio
+    plt.autoscale(tight=True)
+    plt.plot(d)
+    plt.figtext(0.01, 0.99, 'Average %s energy, including any atom types not plotted: %.2f kcal/mol' % \
+                (datatype, np.sum(np.mean(orig_d))), fontsize=5, verticalalignment='top')
+    plt.title('%s energy for %s with %s (%s)' % (datatype.capitalize(), args.ligand_resname, args.solute_spec,
+                                                 args.namdconf))
+    plt.xlabel('Trajectory frame')
+    plt.ylabel('Energy (kcal/mol)')
+
+    plt.legend(list(d), fontsize=4, loc='lower left', bbox_to_anchor=(1.0, 0.0))
+    plt.savefig('%s.pdf' % prefix)
+    print >> sys.stderr, 'Wrote a pretty picture to %s.pdf' % prefix
 
 
 if __name__ == '__main__':
@@ -111,6 +211,10 @@ if __name__ == '__main__':
     ap.add_argument('--solute-spec', default='protein or nucleic', help='Specify which part of the system we care about ligand interactions with')
     ap.add_argument('--dont-plot-atomtypes', default='HA1,HA3,HP,HGA2,HGAAM1', help='Atom types not to plot, separated by commas')
     ap.add_argument('--patches', help='YAML file containing patches to ligand parameters, such as charges')
+    ap.add_argument('--lambda0', type=float, help='FEP lambda0 for the provided trajectory')
+    ap.add_argument('--lambda1', type=float, help='FEP lambda1 for the provided trajectory')
+    ap.add_argument('--alchElecLambdaStart', type=float, default=0.5, help='Governs lambda scaling, as it does in NAMD')
+    ap.add_argument('--alchVdwLambdaEnd', type=float, default=0.5, help='Governs lambda scaling, as it does in NAMD')
     args = ap.parse_args()
 
     psf_filename, prm_filenames = None, []
@@ -145,25 +249,44 @@ if __name__ == '__main__':
 
     ligand_spec = 'resname %s' % args.ligand_resname
 
-    electro, lj = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec, patches=patches)
+    # Calculate the energies assuming no FEP and no patches
+    print >>sys.stderr, 'Calculating energies with no patches.'
+    electro_orig, lj_orig = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec)
+    all_data = [('electro', electro_orig), ('lj', lj_orig)]
 
-    ligand_atoms = u.select_atoms(ligand_spec)
-    labels = ['%s %d %.3f' % (a.type, a.index - ligand_atoms[0].index + 1, a.charge) for a in ligand_atoms]
-    # Make a list of labels specified by the user not to include in the graph, because they are boring
-    # atoms like aliphatic hydrogens with a charge of +0.09
-    dont_plot_labels = []
-    for l in labels:
-        for atomtype in args.dont_plot_atomtypes.split(','):
-            if l.startswith('%s ' % atomtype):
-                dont_plot_labels.append(l)
-    print >>sys.stderr, 'Will not plot:', ', '.join(dont_plot_labels)
+    # If we have patches, recalculate the energies
+    if patches is not None:
+        print >> sys.stderr, 'Calculating energies WITH patches.'
+        electro_patched, lj_patched = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec,
+                                                                 patches=patches)
+        # Now we can reweight the patched energies
+        electro_reweighted = reweight_energies([np.sum(en) for en in electro_orig],
+                                               [np.sum(en) for en in electro_patched])
+        # We actually don't need to do this, yet, because we don't change any L-J parameters
+        lj_reweighted = reweight_energies([np.sum(en) for en in lj_orig],
+                                          [np.sum(en) for en in lj_patched])
 
-    # Try not to repeat line styles
-    pretty_cycler = cycler.cycler(lw=[0.3, 0.8, 1.4]) * cycler.cycler('ls', ['-', ':']) * plt.rcParams['axes.prop_cycle']
-    plt.rc('axes', prop_cycle=pretty_cycler)
+    # We just calculated the unscaled electrostatic and Lennard-Jones energies.
+    # If this was a FEP run, we now need to scale the energies according to the lambda value.
+    # Because electro and lj contain energies assuming there is no scaling (e.g. lambda is 0 for decoupling
+    # or 1 for coupling)
 
-    for datatype, data in (('electro', electro), ('lj', lj)):
+    # DEBUG: show how the lambdas would scale
+    # for l in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0):
+    #     print >>sys.stderr, l, scale_factors_for_lambda(l, args.alchElecLambdaStart, args.alchVdwLambdaEnd)
+
+    if args.lambda0 is not None and args.lambda1 is not None:
+        electro_orig_lambda0, lj_orig_lambda0, \
+        electro_orig_lambda1, lj_orig_lambda1 = do_fep_scaling(electro_orig, lj_orig, args.lambda0,
+                                                               args.lambda1, args.alchElecLambdaStart,
+                                                               args.alchVdwLambdaEnd)
+        # TODO: If we have patches, do the FEP scaling with that set of energies as well
+
+    # Generate CSV files and accompanying plots
+    for datatype, data in all_data:
         prefix = '%s_%s' % (datatype, args.ligand_resname)
+        ligand_atoms = u.select_atoms("resname %s" % args.ligand_resname)
+        labels = ['%s %d %.3f' % (a.type, a.index - ligand_atoms[0].index + 1, a.charge) for a in ligand_atoms]
 
         with open('%s.csv' % prefix, 'w') as f:
             writer = csv.writer(f)
@@ -172,18 +295,4 @@ if __name__ == '__main__':
                 writer.writerow(row)
         print >>sys.stderr, 'Wrote energy data to %s.csv' % prefix
 
-        orig_d = pd.read_csv('%s.csv' % prefix)
-        d = orig_d.drop(dont_plot_labels, axis=1)
-        plt.figure(figsize=(8, 4.5)) # 16:9 aspect ratio
-        plt.autoscale(tight=True)
-        plt.plot(d)
-        plt.figtext(0.01, 0.99, 'Average %s energy, including any atom types not plotted: %.2f kcal/mol' % \
-            (datatype, np.sum(np.mean(orig_d))), fontsize=5, verticalalignment='top')
-        plt.title('%s energy for %s with %s (%s)' % (datatype.capitalize(), args.ligand_resname, args.solute_spec,
-                                                     args.namdconf))
-        plt.xlabel('Trajectory frame')
-        plt.ylabel('Energy (kcal/mol)')
-
-        plt.legend(list(d), fontsize=4, loc='lower left', bbox_to_anchor=(1.0, 0.0))
-        plt.savefig('%s.pdf' % prefix)
-        print >>sys.stderr, 'Wrote a pretty picture to %s.pdf' % prefix
+        generate_plot(datatype, data, args.dont_plot_atomtypes)
