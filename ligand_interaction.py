@@ -83,7 +83,7 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, vdw_shift=0.0, 
 
     for ts in u.trajectory:
         # Tell the user every so often which frame we're on
-        if (ts.frame > 0 and ts.frame % 25 == 24) or ts.frame+1 == len(u.trajectory):
+        if (ts.frame > 0 and ts.frame % 50 == 49) or ts.frame+1 == len(u.trajectory):
             print >>sys.stderr, 'Processing frame %d of %d.' % (ts.frame+1, len(u.trajectory))
         # Calculate pairwise distances, which thankfully we don't need to do manually, because
         # that would be incredibly slow in pure Python.
@@ -105,7 +105,8 @@ def calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec, vdw_shift=0.0, 
         electro.append(frame_electro)
         lj.append(frame_lj)
 
-    return electro, lj
+
+    return np.array(electro), np.array(lj)
 
 
 def scale_factors_for_lambda(lambda_val, alchElecLambdaStart=0.5, alchVdwLambdaEnd=0.5, annihilate=True):
@@ -118,10 +119,7 @@ def scale_factors_for_lambda(lambda_val, alchElecLambdaStart=0.5, alchVdwLambdaE
     :return: electro_scale, lj_scale
     """
 
-    # TODO: Distinguish between annihilation and exnihilation, because the meanings of the parameters
-    # TODO: depend on it.
-    # TODO: When annihilating, alchElecLambdaStart actually acts like a "alchElecLambdaEnd"
-
+    # If we are annihilating rather than "exhnihilating" it's as if the lambda value were "reversed"
     if annihilate is True:
         lambda_val = 1.0 - lambda_val
 
@@ -141,12 +139,13 @@ def do_fep_scaling(electro, lj, lambda0, lambda1, alchElecLambdaStart, alchVdwLa
     electro_scale1, lj_scale1 = scale_factors_for_lambda(args.lambda1, alchElecLambdaStart, alchVdwLambdaEnd)
 
     # Now, scale the energies
-    electro0, lj0, electro1, lj1 = [], [], [], []
-    for i in range(len(electro)):
-        electro0.append(electro[i] * electro_scale0)
-        lj0.append(lj[i] * lj_scale0)
-        electro1.append(electro[i] * electro_scale1)
-        lj1.append(lj[i] * lj_scale1)
+    electro0, lj0 = np.zeros_like(electro), np.zeros_like(lj)
+    electro1, lj1 = np.zeros_like(electro), np.zeros_like(lj)
+    for i in range(np.size(electro, axis=0)):
+        electro0[i] = electro[i] * electro_scale0
+        lj0[i] = lj[i] * lj_scale0
+        electro1[i] = electro[i] * electro_scale1
+        lj1[i] = lj[i] * lj_scale1
 
     return electro0, lj0, electro1, lj1
 
@@ -154,16 +153,15 @@ def do_fep_scaling(electro, lj, lambda0, lambda1, alchElecLambdaStart, alchVdwLa
 # TODO: If weights are extremely nonuniform, complain that the energies1 do not cover a similar enough
 # TODO: part of the phase space represented by energies0, and therefore the reweighted energy is probably
 # TODO: far off.
-def reweight_energies(energies0, energies1):
-    e0 = np.array(energies0)
-    e1 = np.array(energies1)
-    assert len(e0) == len(e1)
+def reweight_energies(e0, e1, beta=1.0/0.6):
+    assert e0.shape == e1.shape
 
-    beta = 1.0/0.6
     weights = np.exp(-beta * (e1 - e0))
+    assert weights.ndim == 1
     weights /= np.sum(weights)
 
-    print >>sys.stderr, 'Then: %.3f  Now: %.3f' % (np.sum(e0)/np.size(e0), np.sum(e1 * weights))
+    print >>sys.stderr, '  Energies0: %.3f  Energies1 (pre): %.3f Energies1 (post): %.3f' % (np.sum(e0)/np.size(e0),
+                                                                                             np.sum(e1), np.sum(e1 * weights))
 
     return(e1 * weights)
 
@@ -252,6 +250,7 @@ if __name__ == '__main__':
     # Calculate the energies assuming no FEP and no patches
     print >>sys.stderr, 'Calculating energies with no patches.'
     electro_orig, lj_orig = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec)
+    print >>sys.stderr, electro_orig
     all_data = [('electro', electro_orig), ('lj', lj_orig)]
 
     # If we have patches, recalculate the energies
@@ -259,28 +258,21 @@ if __name__ == '__main__':
         print >> sys.stderr, 'Calculating energies WITH patches.'
         electro_patched, lj_patched = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec,
                                                                  patches=patches)
-        # Now we can reweight the patched energies
-        electro_reweighted = reweight_energies([np.sum(en) for en in electro_orig],
-                                               [np.sum(en) for en in electro_patched])
+        # Now we can reweight the patched energies.
+        # We are reweighting the sum of the ligand interaction energies, so that there is one energy per frame.
+        electro_reweighted = reweight_energies(np.sum(electro_orig, axis=1), np.sum(electro_patched, axis=1))
         # We actually don't need to do this, yet, because we don't change any L-J parameters
-        lj_reweighted = reweight_energies([np.sum(en) for en in lj_orig],
-                                          [np.sum(en) for en in lj_patched])
+        print >>sys.stderr, 'Not reweighting L-J energies because we have not implemented patching L-J terms'
+        lj_reweighted = np.sum(lj_orig, axis=1)
 
-    # We just calculated the unscaled electrostatic and Lennard-Jones energies.
-    # If this was a FEP run, we now need to scale the energies according to the lambda value.
-    # Because electro and lj contain energies assuming there is no scaling (e.g. lambda is 0 for decoupling
-    # or 1 for coupling)
-
-    # DEBUG: show how the lambdas would scale
-    # for l in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0):
-    #     print >>sys.stderr, l, scale_factors_for_lambda(l, args.alchElecLambdaStart, args.alchVdwLambdaEnd)
-
-    if args.lambda0 is not None and args.lambda1 is not None:
-        electro_orig_lambda0, lj_orig_lambda0, \
-        electro_orig_lambda1, lj_orig_lambda1 = do_fep_scaling(electro_orig, lj_orig, args.lambda0,
-                                                               args.lambda1, args.alchElecLambdaStart,
-                                                               args.alchVdwLambdaEnd)
-        # TODO: If we have patches, do the FEP scaling with that set of energies as well
+        # For now we'll only redo the FEP if there were patches
+        if args.lambda0 is not None and args.lambda1 is not None:
+            electro_reweighted_lambda0, lj_reweighted_lambda0, \
+            electro_reweighted_lambda1, lj_reweighted_lambda1 = do_fep_scaling(electro_reweighted, lj_reweighted,
+                                                                               args.lambda0, args.lambda1, args.alchElecLambdaStart,
+                                                                               args.alchVdwLambdaEnd)
+            dG = electro_reweighted_lambda1 - electro_reweighted_lambda0
+            print >>sys.stderr, 'dG = %.3f kcal/mol' % (np.mean(dG) * np.size(dG))
 
     # Generate CSV files and accompanying plots
     for datatype, data in all_data:
