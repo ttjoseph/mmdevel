@@ -155,15 +155,11 @@ def do_fep_scaling(electro, lj, lambda0, lambda1, alchElecLambdaStart, alchVdwLa
 # TODO: far off.
 def reweight_energies(e0, e1, beta=1.0/0.6):
     assert e0.shape == e1.shape
-
+    # Reweight the energies such that large negative changes are weighted more.
     weights = np.exp(-beta * (e1 - e0))
     assert weights.ndim == 1
-    weights /= np.sum(weights)
-
-    print >>sys.stderr, '  Energies0: %.3f  Energies1 (pre): %.3f Energies1 (post): %.3f' % (np.sum(e0)/np.size(e0),
-                                                                                             np.sum(e1), np.sum(e1 * weights))
-
-    return(e1 * weights)
+    weights /= np.mean(weights)
+    return e1 * weights
 
 
 # TODO: This should just take a CSV filename or something
@@ -250,7 +246,7 @@ if __name__ == '__main__':
     # Calculate the energies assuming no FEP and no patches
     print >>sys.stderr, 'Calculating energies with no patches.'
     electro_orig, lj_orig = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec)
-    print >>sys.stderr, electro_orig
+
     all_data = [('electro', electro_orig), ('lj', lj_orig)]
 
     # If we have patches, recalculate the energies
@@ -261,9 +257,12 @@ if __name__ == '__main__':
         # Now we can reweight the patched energies.
         # We are reweighting the sum of the ligand interaction energies, so that there is one energy per frame.
         electro_reweighted = reweight_energies(np.sum(electro_orig, axis=1), np.sum(electro_patched, axis=1))
+        print >>sys.stderr, 'Mean electro_orig = %.3f' % np.mean(np.sum(electro_orig, axis=1))
+        print >>sys.stderr, 'Reweighted electro = %.3f' % np.mean(electro_reweighted)
+
         # We actually don't need to do this, yet, because we don't change any L-J parameters
-        print >>sys.stderr, 'Not reweighting L-J energies because we have not implemented patching L-J terms'
-        lj_reweighted = np.sum(lj_orig, axis=1)
+        print >>sys.stderr, 'Not (directly) reweighting L-J energies because we have not implemented patching L-J terms'
+        lj_reweighted = np.sum(lj_orig, axis=1) / np.size(lj_orig, axis=0)
 
         # For now we'll only redo the FEP if there were patches
         if args.lambda0 is not None and args.lambda1 is not None:
@@ -272,7 +271,7 @@ if __name__ == '__main__':
                                                                                args.lambda0, args.lambda1, args.alchElecLambdaStart,
                                                                                args.alchVdwLambdaEnd)
             dG = electro_reweighted_lambda1 - electro_reweighted_lambda0
-            print >>sys.stderr, 'dG = %.3f kcal/mol' % (np.mean(dG) * np.size(dG))
+            print >>sys.stderr, 'dG(electro) = %.3f kcal/mol' % np.sum(dG)
 
     # Generate CSV files and accompanying plots
     for datatype, data in all_data:
