@@ -37,4 +37,4 @@ if __name__ == '__main__':
             resid += 1
 
     for i in range(len(counts)):
-        print '%d %d' % (first_resid+i, counts[i])
+        print '%s%d %d' % (protein_ca[i].resname, protein_ca[i].resid, counts[i])
