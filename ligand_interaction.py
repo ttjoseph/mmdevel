@@ -205,10 +205,11 @@ if __name__ == '__main__':
     ap.add_argument('--solute-spec', default='protein or nucleic', help='Specify which part of the system we care about ligand interactions with')
     ap.add_argument('--dont-plot-atomtypes', default='HA1,HA3,HP,HGA2,HGAAM1', help='Atom types not to plot, separated by commas')
     ap.add_argument('--patches', help='YAML file containing patches to ligand parameters, such as charges')
-    ap.add_argument('--lambda0', type=float, help='FEP lambda0 for the provided trajectory')
-    ap.add_argument('--lambda1', type=float, help='FEP lambda1 for the provided trajectory')
-    ap.add_argument('--alchElecLambdaStart', type=float, default=0.5, help='Governs lambda scaling, as it does in NAMD')
-    ap.add_argument('--alchVdwLambdaEnd', type=float, default=0.5, help='Governs lambda scaling, as it does in NAMD')
+    ap.add_argument('--lambda0', type=float, help='FEP only: Lambda0 for the provided trajectory')
+    ap.add_argument('--lambda1', type=float, help='FEP only: Lambda1 for the provided trajectory')
+    ap.add_argument('--alchElecLambdaStart', type=float, default=0.5, help='FEP only: Governs lambda scaling, as it does in NAMD')
+    ap.add_argument('--alchVdwLambdaEnd', type=float, default=0.5, help='FEP only: Governs lambda scaling, as it does in NAMD')
+    ap.add_argument('--alchVdwShiftCoeff', type=float, default=6.0, help='FEP only: shift distance by this much A for L-J as in NAMD')
     args = ap.parse_args()
 
     psf_filename, prm_filenames = None, []
@@ -252,8 +253,11 @@ if __name__ == '__main__':
     # If we have patches, recalculate the energies
     if patches is not None:
         print >> sys.stderr, 'Calculating energies WITH patches.'
+        vdw_shift = 0.0
+        if args.lambda0 is not None and args.lambda1 is not None:
+            vdw_shift = args.alchVdwShiftCoeff
         electro_patched, lj_patched = calc_mm_interaction_energy(u, ligand_spec, prm, solute_spec=args.solute_spec,
-                                                                 patches=patches)
+                                                                 patches=patches, vdw_shift=vdw_shift)
         # Now we can reweight the patched energies.
         # We are reweighting the sum of the ligand interaction energies, so that there is one energy per frame.
         electro_reweighted = reweight_energies(np.sum(electro_orig, axis=1), np.sum(electro_patched, axis=1))
