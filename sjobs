@@ -1,3 +1,6 @@
 #!/bin/bash
 
-squeue -h -u $USER -o "%10i %20j %44Z %2t%10M %C/%R" | sed s#$HOME#~#
+WORK=$HOME/work
+[ -d $WORK ] && WORK=$(readlink $WORK) 
+
+squeue -h -u $USER -o "%i %j %Z %t %10M %C/%R" | sed s#$HOME#~# | sed s#$WORK#~/work# | column -t
