@@ -12,7 +12,7 @@ from MDAnalysis.analysis.distances import *
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Where do ligands go? Useful for flooding simulations')
-    ap.add_argument('-c', '--cutoff', default=5.0, type=float, help='Distance cutoff in Angstroms')
+    ap.add_argument('-c', '--cutoff', default=6.5, type=float, help='Distance cutoff in Angstroms')
     ap.add_argument('ligand_resname', help='Residue name of ligand of interest (e.g. APM)')
     ap.add_argument('psf', help='PSF topology file')
     ap.add_argument('dcd', nargs='+', help='Trajectory file(s)')
@@ -37,4 +37,5 @@ if __name__ == '__main__':
             resid += 1
 
     for i in range(len(counts)):
-        print '%s%d %d' % (protein_ca[i].resname, protein_ca[i].resid, counts[i])
+        if counts[i] > 0:
+            print '%s%d %d' % (protein_ca[i].resname, protein_ca[i].resid, counts[i])
