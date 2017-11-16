@@ -27,13 +27,14 @@ proc do_fep_preparations {ligname} {
 	[atomselect top "protein and name CA"] set occupancy 1
 	$all writepdb dont_spin_ref.pdb
 
-	# Show ligand atomNumbers
+	# Show ligand atomNumbers for the benefit of colvars
 	set nums {}
 	foreach x [$lig list] {
 		lappend nums [expr {$x + 1}]
 	}
 	puts "atomNumbers $nums"
 
+	# Show COM (COG?) of the ligand, again for colvars
 	puts "Center of ligand $ligname:"
 	puts [measure center $lig]
 }
