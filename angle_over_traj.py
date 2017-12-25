@@ -40,5 +40,5 @@ if __name__ == '__main__':
     for ts in u.trajectory:
         vals = []
         for group in groups:
-            vals.append(angle_in_degrees(group[2].position - group[1].position, group[1].position - group[0].position))
+            vals.append(angle_in_degrees(group[2].position - group[1].position, group[0].position - group[1].position))
         print ','.join(['%.2f' % v for v in vals])
