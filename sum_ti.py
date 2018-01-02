@@ -6,14 +6,18 @@
 # lambda and energy values.
 import sys
 from math import fabs
+import re
 
 if __name__ == '__main__':
     rawlines = sys.stdin.readlines()
     vals = []
     # Save only the colvars TI lines
+    energy_re = re.compile('Lambda= (.+)\s+dA/dLambda= (.+)')
     for rawline in rawlines:
         if 'colvars:' in rawline and 'Lambda=' in rawline:
-            (_, _, lambd, _, energy) = rawline.split()
+            # (_, _, lambd, _, energy) = rawline.split()
+            m = energy_re.search(rawline)
+            lambd, energy = float(m.group(1)), float(m.group(2))
             vals.append((float(lambd), float(energy)))
     # Assume energy is zero for the last point
     # vals.append((0.0, 0.0))
