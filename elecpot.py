@@ -125,6 +125,8 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Calculate electrostatic potential correction necessary for FEP/PME/charged ligand')
     ap.add_argument('psf', help='NAMD PSF topology file')
     ap.add_argument('dcd', help='Trajectory file')
+    ap.add_argument('--solvent-spec', help='Which atoms to consider solvent, specified in the MDAnalysis atom selection language',
+    	default='not (around 5 (protein or resname POPC CHL1)) and not (protein or resname POPC CHL1)')
     ap.add_argument('--vmdbin', help='VMD binary', default='vmd')
     ap.add_argument('--keep-temp-files', help='Keep temporary files such as frames_*.dx and frames.dcd', action='store_true')
     ap.set_defaults(keep_temp_files=False)
@@ -149,8 +151,7 @@ if __name__ == '__main__':
     u = mda.Universe(args.psf, 'frames.dcd')
     # The atom selection language doesn't seem to have a VMD-like "within" keyword so we have to do this bullshit
     print >>sys.stderr, 'Selecting the atoms.'
-    solvent = u.select_atoms('not (around 5 (protein or resname POPC CHL1)) and not (protein or resname POPC CHL1)',
-                             updating=True)
+    solvent = u.select_atoms(args.solvent_spec, updating=True)
     print >>sys.stderr, 'Selected %d atoms.' % len(solvent.atoms)
 
     counter, potentials = 0, np.zeros(u.trajectory.n_frames)
@@ -165,6 +166,6 @@ if __name__ == '__main__':
             os.unlink('frame_%d.dx' % counter)
         counter += 1
 
-    print 'Mean solvent potential across all %d frames: %.2f kT/e' % (u.trajectory.n_frames, np.mean(potentials))
+    print 'Mean solvent PME long-range potential across all %d frames: %.2f kT/e' % (u.trajectory.n_frames, np.mean(potentials))
     if args.keep_temp_files is False:
         os.unlink('frames.dcd')
