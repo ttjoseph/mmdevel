@@ -39,6 +39,7 @@ if __name__ == '__main__':
     ap.add_argument('helixlist', help='Helix residue ID ranges, inclusive, separated by commas with no whitespace; e.g. 10-20,60-90. Or a list alias.' )
     ap.add_argument('psf', help='PSF topology file')
     ap.add_argument('dcd', nargs='+', help='DCD trajectory file[s]')
+    ap.add_argument('--absolute', action='store_true', help='Plot absolute angles rather than those relative to first frame')
     args = ap.parse_args()
 
     u = mda.Universe(args.psf, args.dcd)
@@ -46,6 +47,7 @@ if __name__ == '__main__':
     # Parse the helix residue ID ranges
     helixlist = HELIX_LISTS[args.helixlist] if args.helixlist in HELIX_LISTS else args.helixlist
     helices, labels = [], []
+    first_radial_tilting_angle, first_lateral_tilting_angle = {}, {}
     for helix in helixlist.split(','):
         resids = [int(x) for x in helix.split('-')]
         if len(resids) != 2:
@@ -53,31 +55,50 @@ if __name__ == '__main__':
         helices.append(u.select_atoms('protein and name CA and resid %d:%d' % (resids[0], resids[1])))
         labels.append('"Rad%d-%d"' % (resids[0], resids[1]))
         labels.append('"Lat%d-%d"' % (resids[0], resids[1]))
+        first_radial_tilting_angle[helices[-1]] = None
+        first_lateral_tilting_angle[helices[-1]] = None
     # Print CSV label
     print ','.join(labels)
 
+    # Iterate over frames in the trajectory
     protein = u.select_atoms('protein and name CA')
     for ts in u.trajectory:
-        c1, c2, c3 = protein.principal_axes()
-        # Force the first axis to always point up
+        c3, c2, c1 = protein.principal_axes()
+        # Force the major axis to always point up. Normally this should be the z-axis
+        # print >>sys.stderr, c1
         if c1[2] < 0: c1 = -c1
+        # Assert that we've chosen the pricipal axis closest to the Z axis
+        assert(c1[2] > c1[0])
+        assert(c1[2] > c1[1])
 
-        # Calculate angles between the various principal axes
-
+        # Calculate angles between the various principal axes.
         # The vector in the xy plane originating at the channel COM and extending to the COM of the TM2 vector
         # is normal to the plane against which we measure the TM2 tilting angle for radial tilt.
         vals = []
         for helix in helices:
-            a1, a2, a3 = helix.principal_axes()
+            a3, a2, a1 = helix.principal_axes()
             # Force the first axis to point up, always
             if a1[2] < 0: a1 = -a1
+            # Assert that we've chosen the pricipal axis closest to the Z axis
+            assert (a1[2] > a1[0])
+            assert (a1[2] > a1[1])
             radial_plane_normal = helix.center_of_mass() - protein.center_of_mass()
-            radial_plane_normal[2] = 0
+            # print >>sys.stderr, radial_plane_normal[2]
+            # radial_plane_normal[2] = 0
             radial_tilting_angle = 90-angle_in_degrees(a1, radial_plane_normal)
+            if first_radial_tilting_angle[helix] is None:
+                first_radial_tilting_angle[helix] = radial_tilting_angle
 
             # The plane relative to which we measure lateral tilting angle is orthogonal to the radial angle plane
             lateral_plane_normal = np.cross(radial_plane_normal, c1)
             lateral_tilting_angle = 90-angle_in_degrees(a1, lateral_plane_normal)
+            if first_lateral_tilting_angle[helix] is None:
+                first_lateral_tilting_angle[helix] = lateral_tilting_angle
+
+            # If specified in command line flag, keep and subtract the angles from the first frame
+            if args.absolute is False:
+                radial_tilting_angle -= first_radial_tilting_angle[helix]
+                lateral_tilting_angle -= first_lateral_tilting_angle[helix]
 
             vals.append(radial_tilting_angle)
             vals.append(lateral_tilting_angle)
@@ -89,12 +110,12 @@ if __name__ == '__main__':
     # plt.savefig('helices.png', bbox_inches='tight')
     print >>sys.stderr, """# Gnuplot script to plot this data
 set datafile separator ','
-fname = 'foo.csv'
 set xlabel 'Radial tilt (degrees)'
 set ylabel 'Lateral tilt (degrees)'
 set xrange [-20:40]
-set yrange [-3 0:50]
+set yrange [-30:50]
 set term png
+fname = 'foo.csv'
 set output 'foo.png'
 """
     s = []
