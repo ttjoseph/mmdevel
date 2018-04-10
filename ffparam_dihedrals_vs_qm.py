@@ -140,8 +140,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
                 zero_prm_fp.write('%s 0.0 %d 0.0\n' % (' '.join(names), multiplicity))
         # Measure the dihedral angle for this dihedral, and put an entry in
         # extrabonds.txt that fixes that dihedral in place using a very high force constant
-        these_atoms = [u.atoms[i] for i in indices]
-        dihedral_angle = Dihedral(these_atoms).value()
+        dihedral_angle = Dihedral(indices, u).value()
         extrabonds_fp.write('dihedral %d %d %d %d 10000. %f\n' % (
                     indices[0], indices[1], indices[2], indices[3],
                     dihedral_angle))
