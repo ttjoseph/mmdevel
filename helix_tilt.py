@@ -43,6 +43,7 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     u = mda.Universe(args.psf, args.dcd)
+    out_file = open('helix-tilt.csv', 'w')
 
     # Parse the helix residue ID ranges
     helixlist = HELIX_LISTS[args.helixlist] if args.helixlist in HELIX_LISTS else args.helixlist
@@ -58,7 +59,7 @@ if __name__ == '__main__':
         first_radial_tilting_angle[helices[-1]] = None
         first_lateral_tilting_angle[helices[-1]] = None
     # Print CSV label
-    print ','.join(labels)
+    print >>out_file, ','.join(labels)
 
     # Iterate over frames in the trajectory
     protein = u.select_atoms('protein and name CA')
@@ -103,24 +104,22 @@ if __name__ == '__main__':
             vals.append(radial_tilting_angle)
             vals.append(lateral_tilting_angle)
 
-        print ','.join(['%.2f' % x for x in vals])
+        print >>out_file, ','.join(['%.2f' % x for x in vals])
 
 
     # plt.figure()
     # plt.savefig('helices.png', bbox_inches='tight')
-    print >>sys.stderr, """# Gnuplot script to plot this data
+    print """# Gnuplot script to plot this data
 set datafile separator ','
 set xlabel 'Radial tilt (degrees)'
 set ylabel 'Lateral tilt (degrees)'
-set xrange [-20:40]
-set yrange [-30:50]
 set term png
-fname = 'foo.csv'
-set output 'foo.png'
+fname = 'helix-tilt.csv'
+set output 'helix-tilt.png'
 """
     s = []
     for i in range(0, len(labels), 2):
         # Using two columns at a time
         s.append("fname using %d:%d title 'TM%d'" % (i+1, i+2, i/2+1))
 
-    print >>sys.stderr, 'plot %s' % ', '.join(s)
+    print 'plot %s' % ', '.join(s)
