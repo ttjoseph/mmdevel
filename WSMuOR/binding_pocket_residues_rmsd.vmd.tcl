@@ -4,18 +4,18 @@
 #   muor_binding_pocket_rmsd 3 0 -42
 # To use molid 3 as ref, molid 0 as WSMuOR_TMv2 trajectory, and -42 as offset
 # For WSMuOR_TMv1, offset should be -62
-set REF_BINDING_POCKET_RESIDUES {233 148 297 300 296 151 326 293 147}
+# set REF_BINDING_POCKET_RESIDUES {233 148 297 300 296 151 326 293 147}
 
-proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42}} {
+proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42} {ref_residues {233 148 297 300 296 151 326 293 147}}} {
 	# Add offset to resids in the real MuOR to get the corresponding offset
 	# in the WSMuOR
 	set binding_pocket_residues {}
 	set ref_res_sel {}
 	set ws_res_sel {}
 	set column_labels {}
-	global REF_BINDING_POCKET_RESIDUES
+	
 	# Cache atomselect objects for each residue
-	foreach resid $REF_BINDING_POCKET_RESIDUES {
+	foreach resid $ref_residues {
 		set ws_resid [expr $resid + $residue_offset]
 		lappend binding_pocket_residues $ws_resid
 		lappend ws_res_sel [atomselect $molid "backbone and resid $ws_resid"]
@@ -37,7 +37,7 @@ proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42}} {
 
 	# Select the atoms we're going to use.
 	# We do this outside the loop because each time you do this, a new object is created
-	set ref [atomselect $ref_molid "backbone and resid $REF_BINDING_POCKET_RESIDUES"]
+	set ref [atomselect $ref_molid "backbone and resid $ref_residues"]
 	set ref_all [atomselect $ref_molid all]
 	set ws [atomselect $molid "backbone and resid $binding_pocket_residues"]
 	set ws_all [atomselect $molid all]
