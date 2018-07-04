@@ -1,0 +1,3 @@
+#!/bin/bash
+# Suspends all running SLURM jobs, perhaps because the spinning GPU fans are noisy
+sudo scontrol suspend `squeue -h -o "%i %T" | grep RUNNING | cut -d' ' -f1`

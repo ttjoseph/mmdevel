@@ -1,0 +1,3 @@
+#!/bin/bash
+# Resumes all suspended SLURM jobs, perhaps because the noisy fans don't matter at the moment
+sudo scontrol resume `squeue -h -o "%i %T" | grep SUSPENDED | cut -d' ' -f1`
