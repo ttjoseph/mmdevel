@@ -439,6 +439,7 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24, out=sys.stdou
     cmap_raw = griddata(coords, values, xi, method='linear', fill_value=0.0)
 
     # Now to spit out the CMAP table so that NAMD/CHARMM will parse it
+    out.write('CMAP\n')
     out.write('%s %s %d\n' % (' '.join(dihedral1_atomtypes), ' '.join(dihedral2_atomtypes), spacing))
     # Five values per line, why not
     for i in range(len(cmap_raw)):
