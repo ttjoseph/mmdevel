@@ -13,13 +13,13 @@ ap.add_argument('basenamdconf', help='Base filename, e.g. "fep", such that we ge
 ap.add_argument('startsystem', help='Per-group input system name (e.g. equilibrated system)')
 ap.add_argument('--num-windows', type=int, default=30, help='Number of lambda windows')
 ap.add_argument('--left-dense', dest='left_dense', action='store_true', help='Denser lambda coverage closer to 0, rather than 1?')
-ap.add_argument('--idws', dest='idws', action='store_true', help='Use interleaved double-wide sampling')
+ap.add_argument('--no-idws', dest='idws', action='store_false', help='Do not use interleaved double-wide sampling')
 ap.add_argument('--windows-per-group', type=int, default=5, help='Maximum number of lambda windows per batch job')
 ap.add_argument('--per-group-num-equil-steps', type=int, default=500000)
 ap.add_argument('--per-window-num-equil-steps', type=int, default=200000)
 ap.add_argument('--per-window-prod-steps', type=int, default=1000000)
 ap.add_argument('--continue', dest='continue_prod', action='store_true', help='Continue from previous run as specified by startsystem')
-ap.set_defaults(continue_prod=False, left_dense=False, idws=False)
+ap.set_defaults(continue_prod=False, left_dense=False, idws=True)
 args = ap.parse_args()
 
 x = np.linspace(0, 1.0, num=(args.num_windows+1), endpoint=True)
@@ -27,23 +27,34 @@ x = np.linspace(0, 1.0, num=(args.num_windows+1), endpoint=True)
 # Often, there will be big dG changes with low or high lambda values, so this is intended
 # to sample those areas more by using smaller windows.
 all_lambdas = np.sin((np.pi/2)*x) if args.left_dense is False else (1-np.cos((np.pi/2)*x))
-print('Here are the %d lambda windows:' % args.num_windows)
+print('Here are the %d lambdas:' % args.num_windows)
 print(all_lambdas)
-group_id = 0
+real_num_windows = args.num_windows if args.idws is False else args.num_windows+1
+is_last_idws_window = False
 
-for i in range(len(all_lambdas)-1):
+print('That means %d windows.' % real_num_windows)
+
+for i in range(real_num_windows):
     starting_a_group = True if i % args.windows_per_group == 0 else False
-    if starting_a_group:
-        group_id += 1
+
+    is_last_idws_window = (args.idws is True and i == (real_num_windows-1))
+    print(i, is_last_idws_window)
+
+    l0, l1 = None, None
+
+    if is_last_idws_window:
+        l0, l1 = all_lambdas[i], all_lambdas[i-1]
+    else:
+        l0, l1 = all_lambdas[i], all_lambdas[i+1]
+
 
     data = {
         'basenamdconf': args.basenamdconf,
         'startsystem': args.startsystem,
         'outputname': '%s%03d' % (args.basenamdconf, i),
-        'group_id': group_id,
-        'l0': all_lambdas[i],
-        'l1': all_lambdas[i+1],
-        'idws_string': 'alchLambdaIDWS %f' % all_lambdas[i-1] if i > 0 else ''
+        'l0': l0,
+        'l1': l1,
+        'idws_string': 'alchLambdaIDWS %f' % all_lambdas[i-1] if i > 0 and is_last_idws_window is False else ''
     }
     if starting_a_group:
         data['alchequilsteps'] = args.per_group_num_equil_steps
