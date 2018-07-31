@@ -38,7 +38,6 @@ for i in range(real_num_windows):
     starting_a_group = True if i % args.windows_per_group == 0 else False
 
     is_last_idws_window = (args.idws is True and i == (real_num_windows-1))
-    print(i, is_last_idws_window)
 
     l0, l1 = None, None
 
@@ -46,7 +45,6 @@ for i in range(real_num_windows):
         l0, l1 = all_lambdas[i], all_lambdas[i-1]
     else:
         l0, l1 = all_lambdas[i], all_lambdas[i+1]
-
 
     data = {
         'basenamdconf': args.basenamdconf,
