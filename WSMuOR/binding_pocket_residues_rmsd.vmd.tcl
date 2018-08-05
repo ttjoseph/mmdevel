@@ -21,7 +21,6 @@ proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42} {ref_residue
 		set ws_resid [expr $resid + $residue_offset]
 		lappend binding_pocket_residues $ws_resid
 		set ws_res [atomselect $molid "protein and name CA and resid $ws_resid"]
-		lappend ws_res_sel $ws_res
 		# Am I living in a dream world? I have to use a command called "lindex" instead of a sane
 		# array subscripting notation, like [] as in essentially every other language?
 		set ref_res [atomselect $ref_molid "protein and name CA and resid $resid"]
@@ -29,14 +28,15 @@ proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42} {ref_residue
 		# If a residue does not exist in the ref molecule, don't use it for fitting
 		if {[llength [$ref_res get name]] == [llength [$ws_res get name]]} {
 			lappend ref_res_sel $ref_res
+			lappend ws_res_sel $ws_res
 			lappend column_labels "$ref_res_name$resid"
 			lappend good_ref_residues $resid
 			lappend good_ws_residues $ws_resid
-			incr num_residues
+
+			set ws_res_name [string totitle [lindex [$ws_res get resname] 0]]
+			# puts "$ref_res_name$resid -> $ws_res_name$ws_resid"
 		} else {
-			puts "Omitting: ref resid $resid which would map to $ws_resid"
-			puts [llength [$ref_res get name]]
-			puts [llength [$ws_res get name]]
+			puts "Omitting: ref resid $resid which would map to target resid $ws_resid because one of them does not exist"
 		}
 	}
 
@@ -55,11 +55,12 @@ proc muor_binding_pocket_rmsd {ref_molid molid {residue_offset -42} {ref_residue
 	set ws_all [atomselect $molid all]
 	set num_residues [llength $good_ref_residues]
 
-	puts [llength [$ref get name]]
-	puts [llength [$ws get name]]
+	puts "Number of reference residues: [llength [$ref get name]]"
+	puts "Number of target residues: [llength [$ws get name]]"
 	
-	# Iterate over frames
+	# Iterate over frames. On each frame do a fit
 	set num_frames [molinfo $molid get numframes]
+	# set num_frames 5
 	for {set frame 0} {$frame < $num_frames} {incr frame} {
 		# Set the current frame
 		$ws_all frame $frame
