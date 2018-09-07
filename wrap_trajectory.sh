@@ -1,10 +1,8 @@
 #!/usr/bin/bash
 #
 # Wraps a trajectory back into one PBC cell, using qwrap.
-#
-# Writes the result to wrapped.dcd because I'm too lazy to do proper
-# command line arguments. This script is just to save little bit of
-# typing.
+# If you specify more than one trajectory, each one is written to its
+# own wrapped trajectory.
 
 psf=$1
 shift
@@ -18,10 +16,14 @@ echo $dcds
 vmd -dispdev text <<HOORAY
 package require qwrap
 mol new $psf
-foreach i {$dcds} { mol addfile \$i waitfor all }
-qwrap
-[atomselect top all] writedcd wrapped.dcd
+foreach i {$dcds} {
+	animate delete all
+	mol addfile \$i waitfor all
+	set basename [file rootname \$i]
+	set wrappedname "\${basename}.wrapped.dcd"
+	qwrap
+	animate write dcd \$wrappedname
+}
 quit
 HOORAY
 
-echo === Wrapped trajectory written to wrapped.dcd ===
