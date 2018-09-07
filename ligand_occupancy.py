@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     num_residues = len(protein_ca)
     first_resid = protein_ca.residues[0].resid
-    print >>sys.stderr, 'Trajectory files: %s' % ', '.join(args.dcd)
+    print >>sys.stderr, 'Trajectory files (which I hope are already PBC-wrapped): %s' % ', '.join(args.dcd)
     print >>sys.stderr, 'Residues: %d' % num_residues
     print >>sys.stderr, 'First resid: %d' % first_resid
     print >>sys.stderr, 'Frames: %d' % len(u.trajectory)
