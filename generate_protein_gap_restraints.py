@@ -19,25 +19,27 @@ for res in protein.residues:
         last_res = res
 
     # Mod 10000 because resid can only be four decimal digits
-    if res.segid == last_res.segid and res.resid > last_res.resid + 1:
-        print ('# Discontinuity in segid %s between residues %d and %d (length %d)' \
-               % (res.segid, last_res.resid % 10000, res.resid % 10000, res.resid - last_res.resid - 1))
+    if res.resid > last_res.resid + 1:
+        print ('# Discontinuity between residues %s:%s%d and %s:%s%d (length %d)' \
+               % (last_res.segid, last_res.resname, last_res.resid % 10000,
+               res.segid, last_res.resname, res.resid % 10000, res.resid - last_res.resid - 1))
+        colvar_name = 'gap_%s%d_%s%d' % (last_res.segid, last_res.resid % 10000, res.segid, res.resid % 10000)
         a1 = res.atoms.select_atoms('name CA')[0]
         a2 = last_res.atoms.select_atoms('name CA')[0]
         distance = euclidean(a1.position, a2.position)
         print('# Distance between CA: %f' % distance)
 
         print("""colvar {
-    name gap_%s%d_%d
+    name %s
     distance {
         group1 { atomNumbers %d }
         group2 { atomNumbers %d }
     }
-}""" % (res.segid, res.resid, last_res.resid, a1.id, a2.id))
+}""" % (colvar_name, a1.id, a2.id))
         print("""harmonic {
-    colvars gap_%s%d_%d
+    colvars %s
     centers %f
     forceConstant 10.0
-}""" % (res.segid, res.resid, last_res.resid, distance))
+}""" % (colvar_name, distance))
         
     last_res = res
