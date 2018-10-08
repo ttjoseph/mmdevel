@@ -26,9 +26,9 @@ last_restart_filename = files[-1]
 last_index = int(re.search('\d+', last_restart_filename).group())
 # Next index should be one higher than the last one
 next_index = last_index + 1
-next_config_filename = '%s%d.namd' % (args.prefix, next_index)
+next_config_prefix = '%s%d' % (args.prefix, next_index)
 # Create NAMD config file from the last config file and setting variables
-with open(next_config_filename, 'w') as next_config_f:
+with open('%s.namd' % next_config_prefix, 'w') as next_config_f:
     next_config_f.write("""set inputname %s%d.restart;
 set outputname %s%d;
 ### Skel file below here ###
@@ -37,4 +37,4 @@ set outputname %s%d;
         next_config_f.write(skel_f.read())
 
 # Caller shell script is intended to capture this output
-print(next_config_filename)
+print(next_config_prefix)
