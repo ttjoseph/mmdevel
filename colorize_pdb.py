@@ -47,7 +47,7 @@ class PDB:
         """Writes this PDB back out, in PDB format."""
         
         for atom in self.atoms:
-            fp.write("ATOM  %5d %4s %3s %4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n" % \
+            fp.write("ATOM  %5d %4s %3s  %4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n" % \
                 (atom.atomid, atom.atomname, atom.resname, atom.resid, \
                 atom.x, atom.y, atom.z, \
                 atom.occupancy, atom.tempfactor))
