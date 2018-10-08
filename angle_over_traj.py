@@ -19,6 +19,7 @@ if __name__ == '__main__':
 
     print >>sys.stderr, 'Loading %s and %s...' % (args.psf, args.dcd)
     u = mda.Universe(args.psf, args.dcd)
+    print >>sys.stderr, 'Segments:', u.segments
 
     # Parse resid group list
     group_strs = args.groups.split(',')
@@ -30,6 +31,9 @@ if __name__ == '__main__':
         group = []
         for resid in resids:
             atoms = u.select_atoms('protein and segid %s and resid %d and name CA' % (segid, resid))
+            if len(atoms) == 0:
+                print >>sys.stderr, 'Error: Could not find the CA atom for segid %s and resid %d' % (segid, resid)
+                exit(1)
             group.append(atoms[0])
         groups.append(group)
 
