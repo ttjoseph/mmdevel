@@ -27,7 +27,7 @@ if __name__ == '__main__':
     # Find the ligand
     ligand_segid, ligand_resid = args.ligand_spec.split(':')
     ligand_resid = int(ligand_resid)
-    ligand = u.select_atoms('resid %d and segid %s' % (ligand_resid, ligand_segid))
+    ligand = u.select_atoms('type NDAZ and resid %d and segid %s' % (ligand_resid, ligand_segid))
 
     # Find each residue
     residue_strs = args.residues_spec.split(',')
