@@ -16,6 +16,7 @@ if __name__ == '__main__':
     ap.add_argument('-c', '--cutoff', default=5, type=float, help='Distance cutoff in Angstroms')
     ap.add_argument('-t', '--percent_frames_threshold', default=0, type=float,
         help='Only print residues with this percent occupancy or greater (out of 100)')
+    ap.add_argument('--colorize-pdb-filename', help='Filename for output suitable for colorize_pdb.py (percent occupancy cutoff ignored)')
     ap.add_argument('ligand_resname', help='Residue name of ligand of interest (e.g. APM)')
     ap.add_argument('psf', help='PSF topology file')
     ap.add_argument('dcd', nargs='+', help='Trajectory file(s)')
@@ -48,3 +49,8 @@ if __name__ == '__main__':
         if counts[i] > 0 and percent_frames > args.percent_frames_threshold:
             print '%d\t%.2f%%\t%s%d' % (counts[i], percent_frames,
                 protein_ca[i].resname, protein_ca[i].resid)
+
+    if args.colorize_pdb_filename is not None:
+        with open(args.colorize_pdb_filename, 'w') as f:
+            print >>f, ' '.join([str(x) for x in counts/np.max(counts)])
+
