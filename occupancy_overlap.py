@@ -3,6 +3,8 @@
 # Using the output of two ligand_occupancy.py runs, tells you which residues had the highest occupancy
 # in both. This is useful for comparing two flooding simulations with the same protein but different
 # ligands, such as with photoaffinity ligand and its native analog.
+# Note: You probably want to use the '-g' option to ligand_occupancy.py so residues are coalesced
+# across monomers.
 
 import argparse
 import sys
