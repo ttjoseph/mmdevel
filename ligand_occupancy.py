@@ -11,11 +11,20 @@ import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import *
 
+def residue_cmp(a, b):
+    """Comparator for residue names of the form ARG123, to enable friendly sorting"""
+    an, bn = int(a[3:]), int(b[3:])
+    if an == bn: return 0
+    if an < bn: return -1
+    return 1
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Where do ligands go? Useful for flooding simulations')
     ap.add_argument('-c', '--cutoff', default=5, type=float, help='Distance cutoff in Angstroms')
     ap.add_argument('-t', '--percent_frames_threshold', default=0, type=float,
         help='Only print residues with this percent occupancy or greater (out of 100)')
+    ap.add_argument('-g', '--group-across-chains', action='store_true', default=False,
+                    help='Group counts across chains (useful when the protein is multiple identical monomers)')
     ap.add_argument('--colorize-pdb-filename', help='Filename for output suitable for colorize_pdb.py (percent occupancy cutoff ignored)')
     ap.add_argument('ligand_resname', help='Residue name of ligand of interest (e.g. APM)')
     ap.add_argument('psf', help='PSF topology file')
@@ -44,11 +53,25 @@ if __name__ == '__main__':
                 counts[resid] += 1
             resid += 1
 
-    for i in range(len(counts)):
-        percent_frames = 100*float(counts[i])/len(u.trajectory)
-        if counts[i] > 0 and percent_frames > args.percent_frames_threshold:
-            print '%d\t%.2f%%\t%s%d' % (counts[i], percent_frames,
-                protein_ca[i].resname, protein_ca[i].resid)
+    # We don't know beforehand how long the "coalesced" counts array needs to be,
+    # and we need to index by resname+resid, so we use a dict.
+    if args.group_across_chains is True:
+        counts_coalesced = dict()
+        for i in range(len(counts)):
+            key = '%s%d' % (protein_ca[i].resname, protein_ca[i].resid)
+            if key not in counts_coalesced:
+                counts_coalesced[key] = 0
+            counts_coalesced[key] += counts[i]
+
+        for key in sorted(counts_coalesced.keys(), cmp=residue_cmp):
+            percent_frames = 100*float(counts_coalesced[key])/len(u.trajectory)
+            if counts_coalesced[key] > 0 and percent_frames > args.percent_frames_threshold:
+                print '%d\t%.2f%%\t%s' % (counts_coalesced[key], percent_frames, key)
+    else:
+        for i in range(len(counts)):
+            percent_frames = 100*float(counts[i])/len(u.trajectory)
+            if counts[i] > 0 and percent_frames > args.percent_frames_threshold:
+                print '%d\t%.2f%%\t%s%d' % (counts[i], percent_frames, protein_ca[i].resname, protein_ca[i].resid)
 
     if args.colorize_pdb_filename is not None:
         with open(args.colorize_pdb_filename, 'w') as f:
