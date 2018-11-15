@@ -518,7 +518,7 @@ def results_to_html(data, fname='results.html'):
 <title>Dihedral energy surface for %(psf)s</title>
 <style>
 #info_table {
-  height: 400px;
+  min-height: 400px;
   resize: both;
   overflow-x: hidden;
   overflow-y: auto;
