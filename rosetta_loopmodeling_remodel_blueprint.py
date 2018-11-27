@@ -14,6 +14,7 @@ def main():
     ap.add_argument('pdb', help='PDB file of your protein with missing loops')
     ap.add_argument('segid', help='Which segid you want. Sorry, only one is allowed')
     ap.add_argument('fasta', help='FASTA sequence file of the specified segid')
+    ap.add_argument('-o', '--output-dirname', help='Put output in this directory (current directory is not a good idea)')
     ap.add_argument('-l', '--loops', help='Care only about loops starting at these comma-separated resids (default: all)')
     ap.add_argument('-m', '--max-loop-length', type=int, default=50, help='Maximum length of loop to fill')
     args = ap.parse_args()
@@ -24,7 +25,7 @@ def main():
     protein = u.select_atoms('protein and segid %s' % args.segid)
     sequence = SeqIO.read(args.fasta, 'fasta').seq
 
-    output_dirname = 'output_%s_%s' % (args.pdb, args.segid)
+    output_dirname = args.output_dirname or 'remodel_%s_%s' % (args.pdb, args.segid)
     if not os.path.exists(output_dirname):
         os.mkdir(output_dirname)
     os.chdir(output_dirname)
@@ -42,34 +43,42 @@ def main():
 
         if loop_length <= args.max_loop_length:
             blueprint_entries, loop_starts, loop_lengths = gen_blueprint(protein, sequence, [loop_start,])
-            prefix = '%s.%s.%d_%d' % (args.pdb, args.segid, loop_start, loop_lengths[0])
+            assert loop_start == loop_starts[0], 'Bug: confused about loop start'
+            assert loop_length == loop_lengths[0], 'Bug: confused about loop length'
+            this_output_dirname = 'loop%d_%d' % (loop_start, loop_length)
+            if not os.path.exists(this_output_dirname):
+                os.mkdir(this_output_dirname)
+            prefix = '%s.%s.%d_%d' % (args.pdb, args.segid, loop_start, loop_length)
             with open('%s.blueprint' % prefix, 'w') as f:
                 print >>f, '\n'.join(blueprint_entries)
             with open('%s.remodel.conf' % prefix, 'w') as f:
                 print >>f, """-in:file:s ../%s
 -remodel:blueprint %s.blueprint
-
 -run:chain %s
--remodel:num_trajectory 20 
--nstruct 500
-
--out:path:all .
+-remodel:num_trajectory 1
+-nstruct 100
+-out:level 100
+-out:path:all %s
 -out:file:scorefile %s.sc
-""" % (args.pdb, prefix, args.segid, prefix)
+""" % (args.pdb, prefix, args.segid, this_output_dirname, prefix)
 
 
+# Generates blueprint file which tells Rosetta Remodel what to do with each residue in the protein
+# (e.g. nothing, or generate a conformation)
 def gen_blueprint(protein, sequence, only_these_loops=None):
     last_res = None
     rosetta_resid = 1
     blueprint_entries = []
     loop_starts, loop_lengths = [], []
 
+    # Look for residues missing in the structure
     for res in protein.residues:
         res_1let = mda.lib.util.convert_aa_code(res.resname)
         res_seq = sequence[res.resid-1]
+        # Ensure that the supplied sequence matches that in the PDB
         # Don't forget, resid counts starting at 1
         if res_1let != res_seq:
-            print >>sys.stderr, 'Bad news: res_1let %s does not match sequence %s at %d. Is this the right FASTA?' % \
+            print >>sys.stderr, 'Error: res_1let %s does not match sequence %s at %d. Is this the right FASTA? Is the PDB numbered properly?' % \
                 (res_1let, res_seq, res.resid)
             exit(1)
 
