@@ -98,6 +98,8 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
 
     # Replace coordinates with the supplied ones and write out a new (temporary) PDB
     coords = data['coords']
+    if len(pdb.atoms) != len(coords):
+        print >>sys.stderr, 'PDB has %d atoms but I found %d atoms in the Gaussian output' % (len(pdb.atoms), len(coords))
     for i in range(len(pdb.atoms)):
         pdb.atoms[i].x = coords[i][0]
         pdb.atoms[i].y = coords[i][1]
@@ -113,6 +115,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     u = mda.Universe(data['psf'], pdb_fname)
     for key, dihedral in data['dihedrals'].iteritems():
         dihedral['atomtypes'] = [u.atoms[i].type for i in dihedral['indices']]
+        dihedral['atomnames'] = [u.atoms[i].name for i in dihedral['indices']]
 
     # Construct parameters block
     prm_string = ''
@@ -293,6 +296,7 @@ def calc_mm_energy(psf, pdb, prms, dihedral_results, namd='namd2'):
         data.append(d)
 
     # Optimistically assume one core's worth of time will be spent in I/O starting up namd2 instances
+    calc_one_mm_energy(data[0])
     p = Pool(cpu_count() + 1)
     data = p.map(calc_one_mm_energy, data)
     # For debugging only - stack trace in Python 2 is ruined by Pool
@@ -487,17 +491,19 @@ def results_to_html(data, fname='results.html'):
 
     # Make a pretty HTML table of what's shown in the plot
     frame_info_str = """<table class='table table-condensed table-hover table-striped'>
-    <tr><th>Frame</th><th>Gaussian log</th><th>Dihedral(s) being scanned</th><th>Atom indices</th>
+    <tr><th>Frame</th><th>Gaussian log</th><th>Atom types</th><th>Atom names</th><th>Atom indices</th>
     <th>Angle (degrees)</th></tr>"""
     for i in range(len(data)):
-        indices, atomtypes, angles = [], [], []
+        indices, atomtypes, atomnames, angles = [], [], [], []
         for key, dihedral in data[i]['dihedrals'].iteritems():
             indices.append(dihedral['indices'])
             atomtypes.append(dihedral['atomtypes'])
+            atomnames.append(dihedral['atomnames'])
             angles.append(dihedral['angle'])
-        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (
+        frame_info_str += '<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (
             i, basename(data[i]['gaussian_log_filename']), 
             ' '.join(['-'.join(a) for a in atomtypes]),
+            ' '.join(['-'.join(a) for a in atomnames]),
             ' '.join([str(a) for a in indices]),
             ' '.join([str(a) for a in angles]))
     frame_info_str += "</table>"
