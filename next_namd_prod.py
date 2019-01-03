@@ -19,20 +19,34 @@ skel_filename = '%s.skel.namd' % args.prefix
 if os.path.isfile(skel_filename) is False:
     exit('Skeleton NAMD config file %s does not seem to be there' % skel_filename)
 files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d' % int(re.search('\d+', k).group()))
+
+# No production restart file? Start from the end of equilibration
+if len(files) == 0:
+    files = glob.glob('step6.6_equilibration.restart.coor')
+
 if len(files) == 0:
     exit('Unable to find any NAMD restart files')
 last_restart_filename = files[-1]
 # Extract the last index number from the last restart filename
 last_index = int(re.search('\d+', last_restart_filename).group())
+
+# If we are starting from equilibration, suppress fancy prediction of filenames
+if 'equilibration' in last_restart_filename:
+    inputname = last_restart_filename.replace('.restart.coor', '')
+    last_index = 0
+else:
+    inputname = '%s%d.restart' % (args.prefix, last_index)
+
 # Next index should be one higher than the last one
 next_index = last_index + 1
 next_config_prefix = '%s%d' % (args.prefix, next_index)
+
 # Create NAMD config file from the last config file and setting variables
 with open('%s.namd' % next_config_prefix, 'w') as next_config_f:
-    next_config_f.write("""set inputname %s%d.restart;
+    next_config_f.write("""set inputname %s;
 set outputname %s%d;
 ### Skel file below here ###
-""" % (args.prefix, last_index, args.prefix, next_index))
+""" % (inputname, args.prefix, next_index))
     with open(skel_filename) as skel_f:
         next_config_f.write(skel_f.read())
 
