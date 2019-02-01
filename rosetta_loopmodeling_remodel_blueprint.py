@@ -30,7 +30,7 @@ class PDBEmitter(object):
         self.last_emitted_resid = 0
         self.last_encountered_resid = None
 
-    def emit_atom(self, atom, occupancy=0.0, resid=None, renumber_resid=False):
+    def emit_atom(self, atom, occupancy=0.0, tempfactor=0.0, resid=None, renumber_resid=False):
         """Emits one ATOM record.
 
         Returns emitted resid."""
@@ -46,7 +46,7 @@ class PDBEmitter(object):
             '{:6s}{:5d} {:^4s}{:1s}{:3s} {:1s}{:4d}{:1s}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:>2s}{:2s}\n'.format(
             "ATOM", self.curr_atom_id, atom.name, atom.altLoc, atom.residue.resname, atom.residue.segid, resid,
                   ' ', atom.position[0], atom.position[1], atom.position[2],
-                  occupancy, 0.0, atom.type, '  ')) # occupancy, temp factor, type, charge
+                  occupancy, tempfactor, atom.type, '  ')) # occupancy, temp factor, type, charge
         self.curr_atom_id += 1
         self.last_emitted_resid = resid
         self.last_encountered_resid = atom.residue.resid
@@ -73,6 +73,7 @@ def main():
     if not os.path.exists(output_dirname):
         os.mkdir(output_dirname)
     copy2(args.pdb, output_dirname)
+    copy2(args.fasta, output_dirname)
     os.chdir(output_dirname)
 
     # Renumber PDB for Rosetta, because it will silently generate garbage unless resids start from

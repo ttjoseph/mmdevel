@@ -67,7 +67,7 @@ class ClippableInterval(object):
                 ptr = prev_ptr
                 ptr.next = after
                 # Insert a new node for each loop residue
-                for i in range(left, right+1):
+                for i in range(left, right):
                     node = ResidueNode(i, is_loop=True, name=name)
                     node.next = ptr.next
                     ptr.next = node
@@ -102,6 +102,8 @@ def best_pdb_in_scorefile(fname):
     # At this point, we have the scores.
     scores = sorted(scores, reverse=True)
     best_score, loop_pdb = scores[0]
+    if best_score == 0:
+        return None
     return loop_pdb
 
 
@@ -139,12 +141,16 @@ def main():
     ap.add_argument('remodel_confs', nargs='+', help='Rosetta remodel configuration files')
     args = ap.parse_args()
 
-    # We'll use a tempfile for the PDB at each step of merging
-    temp_pdb_fname = None
     template_conf_fname = args.remodel_confs[0]
     template_conf = load_remodel_conf(template_conf_fname)
     template_blueprint_dir = os.path.abspath(os.path.dirname(template_conf_fname))
     template_u = mda.Universe('%s/%s' % (template_blueprint_dir, template_conf['in:file:s']))
+    # This template is the renumbered protein. Load the resid mapping
+    map_lines = open('%s/../%s' % (template_blueprint_dir, 'real-to-rosetta-resid.map')).readlines()
+    rosetta_to_real_resid = {}
+    for line in map_lines:
+        real, rosetta = [int(x) for x in line.split()]
+        rosetta_to_real_resid[rosetta] = real
     which_one = ClippableInterval(1, template_u.atoms.n_residues)
     # TODO: Ensure n_residues == largest resid
 
@@ -178,7 +184,7 @@ def main():
         if not os.path.isfile(loop_pdb):
             print >>sys.stderr, 'No 1.pdb in %s, so skipping it' % blueprint_dir
             continue
-
+            
         # Loop_len is just the missing part. Rosetta_loop_len includes the flanking residues.
         # Therefore, rosetta_loop_len == loop_len + 2
         print >>sys.stderr, loop_start, loop_len, '->', rosetta_loop_start, rosetta_loop_len
@@ -192,16 +198,28 @@ def main():
 
     ptr = which_one.head
     global_resid = 1
+    loop_offset = 0
     while ptr:
-        print ptr.resid, ptr.name
         pdb = ptr.name or 'template'
         if pdb not in universes:
             universes[pdb] =  mda.Universe(pdb)
 
         residue = universes[pdb].select_atoms('resid %d' % ptr.resid)
         occupancy = 0.0 if pdb == 'template' else 1.0
+        # Restore native residue numbering, since we had to jack it all up for the sake of Rosetta
+        if ptr.name: # and ptr.name.startswith('loop'):
+            m = bp_re.match(os.path.split(os.path.split(ptr.name)[0])[1])
+            curr_resid, _ = int(m.group(1)), int(m.group(2))
+            curr_resid += loop_offset
+            loop_offset += 1
+        else:
+            curr_resid = rosetta_to_real_resid[ptr.resid]
+            loop_offset = 0
+
         for a in residue.atoms:
-            emitter.emit_atom(a, occupancy=occupancy, resid=global_resid)
+            emitter.emit_atom(a, occupancy=occupancy, resid=curr_resid)
+
+        print 'HELLO', ptr.resid, curr_resid, ptr.name
 
         ptr = ptr.next
         global_resid += 1
