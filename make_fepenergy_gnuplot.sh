@@ -3,7 +3,7 @@
 FEP_BASENAME=$1
 shift
 
-python ~/mmdevel/fepout_cat.py ${FEP_BASENAME}*.fepout > $FEP_BASENAME.all.fepout
+python ~/mmdevel/fepout_cat.py ${FEP_BASENAME}???.fepout > $FEP_BASENAME.all.fepout
 grep FepEnergy $FEP_BASENAME.all.fepout | awk '{print $10}' > $FEP_BASENAME.fepenergy.gnuplot
 # 8 12
 cat ${FEP_BASENAME}*.fepout | grep '#Free' | awk '{print $8" "$12}' > $FEP_BASENAME.delta.gnuplot
