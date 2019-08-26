@@ -7,20 +7,35 @@
 
 cmd=$1
 server=$2
+shift 2
 here=$PWD/
 homeslash=$HOME/
 path_on_server=${here/$homeslash/}
+        
+# Remove trailing slash as necessary in each path spec
+paths=()
+for p in $@; do
+    paths+=( "${p%/}" )
+done
 
 case $cmd in
 	from)
-		target_rel_path=${3%/}
-		echo rsync -avz --progress ${server}:${path_on_server}${target_rel_path} .
-		rsync -avz --progress ${server}:${path_on_server}${target_rel_path} .
+        # Process variable number of command line arguments, so we can sync multiple paths
+        # with one invocation of rsync. This is so user doesn't have to keep typing in
+        # the password.
+        # Don't make a brace-enclosed, comma-separated list for one element
+        if [ "${#paths[@]}" -gt 1 ]; then
+            IFS=, eval 'pathstring="${paths[*]}"'
+            pathstring="{${pathstring}}"
+        else
+            pathstring="$paths"
+        fi
+		echo rsync -avz --progress ${server}:${path_on_server}${pathstring} .
+	    rsync -avz --progress ${server}:${path_on_server}${pathstring} .
 	;;
 	to)
-		src_rel_path=${3%/}
-		target_rel_path=${4%/}
-		echo rsync -avz --progress $src_rel_path ${server}:${path_on_server}${target_rel_path}
-		rsync -avz --progress $src_rel_path ${server}:${path_on_server}${target_rel_path}
+        pathstring="${paths[@]}"
+		echo rsync -avz --progress ${pathstring} ${server}:${path_on_server}
+		rsync -avz --progress ${pathstring} ${server}:${path_on_server}
 	;;
 esac
