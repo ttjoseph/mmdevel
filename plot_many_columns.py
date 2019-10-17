@@ -4,6 +4,7 @@
 # Especially useful for time-series data, such as RMSD over an MD trajectory
 import argparse
 import pandas as pd
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
@@ -24,11 +25,15 @@ if __name__ == '__main__':
         cols = [int(x) for x in args.columns.split(',')]
         df = df.iloc[:, cols]
 
+    df.set_index(np.array(df.index)*np.array(args.x_scale))
+
     mpl.rcParams['lines.linewidth'] = 0.25
-    
-    df.plot(x=df.index*args.x_scale, y=df.columns)
-    plt.xlabel(unicode(args.x_label, 'utf8'))
-    plt.ylabel(unicode(args.y_label, 'utf8'))
+
+    print(df.columns)
+
+    df.plot()
+    plt.xlabel(args.x_label)
+    plt.ylabel(args.y_label)
     labels = None
     if args.legend_labels is not None:
         labels = args.legend_labels.split(',')
