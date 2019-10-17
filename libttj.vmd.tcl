@@ -172,3 +172,30 @@ proc rotateatoms {m x y z} {
   $m move [transaxis z $z]
   $m moveby $loc
 }
+
+# Draw a box.
+# Useful for visualizing Autodock Vina bounding boxes
+proc draw_box {center_x center_y center_z size_x size_y size_z {color "yellow"}} {
+    set min_x [expr $center_x - ($size_x/2)]
+    set max_x [expr $center_x + ($size_x/2)]
+    set min_y [expr $center_y - ($size_y/2)]
+    set max_y [expr $center_y + ($size_y/2)]
+    set min_z [expr $center_z - ($size_z/2)]
+    set max_z [expr $center_z + ($size_z/2)]
+
+    # Lifted from: https://www.ks.uiuc.edu/Research/vmd/vmd-1.7.1/ug/node173.html
+    draw materials off
+    draw color $color
+    draw line "$min_x $min_y $min_z" "$max_x $min_y $min_z"
+    draw line "$min_x $min_y $min_z" "$min_x $max_y $min_z"
+    draw line "$min_x $min_y $min_z" "$min_x $min_y $max_z"
+    draw line "$max_x $min_y $min_z" "$max_x $max_y $min_z"
+    draw line "$max_x $min_y $min_z" "$max_x $min_y $max_z"
+    draw line "$min_x $max_y $min_z" "$max_x $max_y $min_z"
+    draw line "$min_x $max_y $min_z" "$min_x $max_y $max_z"
+    draw line "$min_x $min_y $max_z" "$max_x $min_y $max_z"
+    draw line "$min_x $min_y $max_z" "$min_x $max_y $max_z"
+    draw line "$max_x $max_y $max_z" "$max_x $max_y $min_z"
+    draw line "$max_x $max_y $max_z" "$min_x $max_y $max_z"
+    draw line "$max_x $max_y $max_z" "$max_x $min_y $max_z"
+}
