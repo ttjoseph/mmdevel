@@ -13,7 +13,7 @@ import re
 import argparse
 import sys
 from os.path import isfile
-import cStringIO as StringIO
+import io as StringIO
 import yaml
 from natsort import natsorted
 import intervaltree
@@ -171,8 +171,8 @@ def concat_block_prod(blocks, ignore_steps=0):
     # We stored all the lambda ranges in a set. If we add a different lambda range,
     # the set will grow, which we use to detect whether there are any different lambda ranges.
     if len(lambdas) > 1:
-        print >>sys.stderr, 'Um I think your lambda spec is messed up. Here is what I have for the same group of blocks:'
-        print >>sys.stderr, lambdas
+        print('Um I think your lambda spec is messed up. Here is what I have for the same group of blocks:', file=sys.stderr)
+        print(lambdas, file=sys.stderr)
         return None
 
     # Keep the header from the first block, which should be the first comment fragment
@@ -247,9 +247,9 @@ def load_spec_file(specfile):
         fepouts = spec_yaml[lambda_range]
         (spec_b, spec_e) = sorted(float(x) for x in lambda_range.strip().split())
         # If we haven't seen this interval before, store it
-        if not spec.search(spec_b, spec_e, strict=True):
+        if not spec.overlap(spec_b, spec_e, strict=True):
             # ...But we may overlap with a previous interval, which is an error
-            if spec.search(spec_b, spec_e):
+            if spec.overlap(spec_b, spec_e):
                 sys.stderr.write(
                     '(%f, %f) overlaps with something else in the spec. I am too lazy to tell you what\n' % (
                     spec_b, spec_e))
@@ -290,17 +290,17 @@ def main():
         # Rearrange the list into a dict index by lambda, merging where necessary
         all_lambdas = {}
         for lambdas in per_file_lambdas:
-            for key in lambdas.keys():
+            for key in list(lambdas.keys()):
                 if key in all_lambdas:
                     all_lambdas[key].append(lambdas[key]['fname'])
                 else:
                     all_lambdas[key] = [lambdas[key]['fname'],]
 
         # Spit out the blocks lambda dict in YAML format
-        for key in natsorted(all_lambdas.keys()):
-            print '"%s":' % key.replace('_', ' ')
+        for key in natsorted(list(all_lambdas.keys())):
+            print('"%s":' % key.replace('_', ' '))
             for fname in all_lambdas[key]:
-                print '  - %s' % fname
+                print('  - %s' % fname)
 
         # Don't do anything else
         return 0
@@ -345,7 +345,7 @@ def main():
                     sys.stderr.write('Keeping (%f, %f) from %s\n' % (block_b, block_e, fname)) # TODO: More detail
                     pass
 
-            # Dump this block into the tree. Duplicates are OK because they'll be returned with intervaltree.search()
+            # Dump this block into the tree. Duplicates are OK because they'll be returned with intervaltree.overlap()
             # and we can then concatenate them
             all_blocks[block_b:block_e] = blocks[key]
 
@@ -367,7 +367,7 @@ def main():
     # Iterate over the set of lambda ranges we had assembled above
     for (block_b, block_e) in natsorted(all_lambda_ranges):
         # Find all blocks with this lambda range
-        blocks = all_blocks.search(block_b, block_e)
+        blocks = all_blocks.overlap(block_b, block_e)
         # And merge them. concat_block_prod will go read the block data from the fepout files
         # and merge only their production fragment, keeping an equilibration fragment chosen arbitrarily.
         sys.stdout.write(concat_block_prod(blocks, ignore_steps=args.ignore_steps))
