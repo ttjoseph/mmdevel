@@ -5,8 +5,10 @@
 # Spits out a histogram data file.
 # This is useful for making sense of flooding simulations.
 
+from __future__ import print_function
 import argparse
 import sys
+from tqdm import tqdm
 import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import *
@@ -32,20 +34,20 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     u = mda.Universe(args.psf, args.dcd)
-    protein_ca = u.select_atoms('protein and name CA')
+    protein_ca = u.select_atoms('protein and name CA and (sphzone 15 (segid PROA and resid 182))')
     ligand = u.select_atoms('resname %s' % args.ligand_resname)
 
     num_residues = len(protein_ca)
     first_resid = protein_ca.residues[0].resid
-    print >>sys.stderr, 'Trajectory files (which I hope are already PBC-wrapped): %s' % ', '.join(args.dcd)
-    print >>sys.stderr, 'Residues: %d' % num_residues
-    print >>sys.stderr, 'First resid: %d' % first_resid
-    print >>sys.stderr, 'Frames: %d' % len(u.trajectory)
-    print >>sys.stderr, 'Distance cutoff: %.2f Å for resname %s' % (args.cutoff, args.ligand_resname)
-    print >>sys.stderr, 'Percent occupancy threshold: %.2f%%' % args.percent_frames_threshold
+    print('Trajectory files: %s' % ', '.join(args.dcd), file=sys.stderr)
+    print('Residues: %d' % num_residues, file=sys.stderr)
+    print('First resid: %d' % first_resid, file=sys.stderr)
+    print('Frames: %d' % len(u.trajectory), file=sys.stderr)
+    print('Distance cutoff: %.2f Å for resname %s' % (args.cutoff, args.ligand_resname), file=sys.stderr)
+    print('Percent occupancy threshold: %.2f%%' % args.percent_frames_threshold, file=sys.stderr)
     counts = np.zeros(num_residues)
-    for ts in u.trajectory:
-        d = distance_array(protein_ca.positions, ligand.positions)
+    for ts in tqdm(u.trajectory):
+        d = distance_array(protein_ca.positions, ligand.positions, box=ts.dimensions)
         resid = 0
         for ca in d:
             min_dist = np.min(ca)
@@ -63,17 +65,17 @@ if __name__ == '__main__':
                 counts_coalesced[key] = 0
             counts_coalesced[key] += counts[i]
 
-        for key in sorted(counts_coalesced.keys(), cmp=residue_cmp):
+        for key in sorted(list(counts_coalesced.keys()), cmp=residue_cmp):
             percent_frames = 100*float(counts_coalesced[key])/len(u.trajectory)
             if counts_coalesced[key] > 0 and percent_frames > args.percent_frames_threshold:
-                print '%d\t%.2f%%\t%s' % (counts_coalesced[key], percent_frames, key)
+                print('%d\t%.2f%%\t%s' % (counts_coalesced[key], percent_frames, key))
     else:
         for i in range(len(counts)):
             percent_frames = 100*float(counts[i])/len(u.trajectory)
             if counts[i] > 0 and percent_frames > args.percent_frames_threshold:
-                print '%d\t%.2f%%\t%s%d' % (counts[i], percent_frames, protein_ca[i].resname, protein_ca[i].resid)
+                print('%d\t%.2f%%\t%s%d' % (counts[i], percent_frames, protein_ca[i].resname, protein_ca[i].resid))
 
     if args.colorize_pdb_filename is not None:
         with open(args.colorize_pdb_filename, 'w') as f:
-            print >>f, ' '.join([str(x) for x in counts/np.max(counts)])
+            print(' '.join([str(x) for x in counts/np.max(counts)]), file=f)
 
