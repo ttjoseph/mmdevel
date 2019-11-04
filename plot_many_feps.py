@@ -2,28 +2,49 @@
 import argparse
 import sys
 import os
+from glob import glob
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-def parse_fepout(fname):
-	with open(fname) as f:
-		lines = f.readlines()
-		fepenergy, deltas, lambdas = list(), list(), list()
-		for line in lines:
-			tokens = line.split()
-			if line.startswith('FepEnergy'):
-				# A single sample
-				# The energy is always in the tenth column
-				fepenergy.append(float(tokens[9]))
-			elif line.startswith('#Free'):
-				# delta-G at end of window, in the twelfth column
-				deltas.append(float(tokens[11]))
-			elif line.startswith('#NEW FEP WINDOW'):
-				# Lambda value in seventh column
-				lambdas.append(float(tokens[6]))
+def parse_fepout(fnames):
+	fepenergy, deltas, lambdas = list(), list(), list()
+	lines = list()
 
-		return fepenergy, deltas, lambdas
+	if isinstance(fnames, str):
+		fnames = [fnames,]
 
+	for fname in fnames:
+		print(fname, file=sys.stderr)
+		if os.path.exists(fname) is False:
+			return None, None, None
+		with open(fname) as f:
+			lines.extend(f.readlines())
+
+	for line in lines:
+		tokens = line.split()
+		if line.startswith('FepEnergy'):
+			# A single sample
+			# The energy is always in the tenth column
+			fepenergy.append(float(tokens[9]))
+		elif line.startswith('#Free'):
+			# delta-G at end of window, in the twelfth column
+			deltas.append(float(tokens[11]))
+		elif line.startswith('#NEW FEP WINDOW'):
+			# Lambda value in seventh column
+			lambdas.append(float(tokens[6]))
+
+	return fepenergy, deltas, lambdas
+
+
+# TODO: Return the first matching glob of files
+# This will allow us to use (for example) either dis5A000_fwd.fepout, or dis5A???.fepout
+def try_globs(*globspecs):
+	for globspec in globspecs:
+		fnames = glob(globspec)
+		if len(fnames) > 0:
+			break
+	return sorted(fnames)
 
 def main():
 	ap = argparse.ArgumentParser(description='Make a big plot of FEP curves')
@@ -33,27 +54,32 @@ def main():
 	args = ap.parse_args()
 
 	good_dirnames = []
+	fwd_fnames, bwd_fnames = dict(), dict()
 	for dirname in args.dirname:
 		if os.path.exists(dirname) is False or os.path.isdir(dirname) is False:
 			print('Could not find directory {}.'.format(dirname), file=sys.stderr)
 			continue
 
-		fwd_fname = '{}/namd/{}000_fwd.fepout'.format(dirname, args.prefix)
-		bwd_fname = '{}/namd/{}000_bwd.fepout'.format(dirname, args.prefix)
-		if os.path.exists(fwd_fname) is False:
-			print('Could not find {}'.format(fwd_fname))
+		fwd_fname = try_globs('{}/namd/{}000_fwd.fepout'.format(dirname, args.prefix),
+			'{}/namd/dis5A???.fepout'.format(dirname, args.prefix))
+		bwd_fname = try_globs('{}/namd/{}000_bwd.fepout'.format(dirname, args.prefix))
+		if len(fwd_fname) == 0:
+			print('Could not find forward fepouts in {}'.format(dirname))
 			continue
-		if os.path.exists(bwd_fname) is False:
-			print('Could not find {}'.format(bwd_fname))
-			continue
+		else:
+			fwd_fnames[dirname] = fwd_fname
+		if len(bwd_fname) == 0:
+			print('Could not find backward fepouts in {}'.format(dirname))
+		else:
+			bwd_fnames[dirname] = bwd_fname
 
-		# There should at least be a dis5A000_fwd.fepout
+		# Only care about this directory if we found a fepout
 		good_dirnames.append(dirname)
 
 	num_feps = len(good_dirnames)
 	print('Processing {} FEPs.'.format(num_feps), file=sys.stderr)
 
-	rows_per_page = 3
+	rows_per_page = 4
 	pdf = PdfPages(args.output)
 
 	# Ensure there are enough subplots for all the FEPs
@@ -73,24 +99,26 @@ def main():
 		offset = i % rows_per_page
 
 		if offset == 0:
-			fig, ax = plt.subplots(rows_per_page, num_cols)
+			fig, ax = plt.subplots(rows_per_page, num_cols, figsize=(10, 7.5))
 			fig.tight_layout(h_pad=2)
 
 		dirname = good_dirnames[i]
-		fwd, fwd_dg, lambdas = parse_fepout('{}/namd/{}000_fwd.fepout'.format(dirname, args.prefix))
-		bwd, bwd_dg, lambdas = parse_fepout('{}/namd/{}000_bwd.fepout'.format(dirname, args.prefix))
+		fwd, fwd_dg, lambdas = parse_fepout(fwd_fnames[dirname])
 		ax[offset][0].plot(fwd, linewidth=0.2, label='Forward')
-		ax[offset][0].plot(bwd, linewidth=0.2, label='Backward')
 		ax[offset][0].set_title(dirname, fontsize=8, pad=3)
 		# ax[offset][0].set_ylabel('delta-G')
-		ax[offset][1].plot(lambdas, fwd_dg, label='Forward')
-		ax[offset][1].plot(lambdas, bwd_dg, label='Backward')
+		ax[offset][1].plot(lambdas, np.cumsum(fwd_dg), label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
 
+		if dirname in bwd_fnames:
+			bwd, bwd_dg, lambdas = parse_fepout(bwd_fnames[dirname])
+			ax[offset][0].plot(bwd, linewidth=0.2, label='Backward')
+			ax[offset][1].plot(lambdas, np.cumsum(bwd_dg), label='Backward: {:.2f} kcal/mol'.format(np.sum(bwd_dg)))
+
+		# Show the legend because the dG sums are in it
+		ax[offset][1].legend(loc='best')
 		print('{} is on page {}'.format(dirname, page+1))
 
 		if offset == (rows_per_page - 1):
-			# Put a legend in the first row
-			ax[0][1].legend(loc='best')
 			pdf.savefig(fig)
 
 	pdf.close()
