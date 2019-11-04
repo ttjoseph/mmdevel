@@ -49,7 +49,8 @@ def try_globs(*globspecs):
 def main():
 	ap = argparse.ArgumentParser(description='Make a big plot of FEP curves')
 	ap.add_argument('dirname', nargs='+', help='Directories of simulation systems, with _fwd and _bwd fepouts in namd subdirectories')
-	ap.add_argument('--prefix', '-', default='dis5A', help='fepout file prefix')
+	ap.add_argument('--fepdirname', '-f', default='namd', help='Subdirectory under <dirname> containing .fepout files')
+	ap.add_argument('--prefix', '-p', default='dis5A', help='fepout file prefix')
 	ap.add_argument('--output', '-o', default='fep_plots.pdf', help='Output file')
 	args = ap.parse_args()
 
@@ -60,9 +61,9 @@ def main():
 			print('Could not find directory {}.'.format(dirname), file=sys.stderr)
 			continue
 
-		fwd_fname = try_globs('{}/namd/{}000_fwd.fepout'.format(dirname, args.prefix),
-			'{}/namd/dis5A???.fepout'.format(dirname, args.prefix))
-		bwd_fname = try_globs('{}/namd/{}000_bwd.fepout'.format(dirname, args.prefix))
+		fwd_fname = try_globs('{}/{}/{}???_fwd.fepout'.format(dirname, args.fepdirname, args.prefix),
+			'{}/{}/{}???.fepout'.format(dirname, args.fepdirname, args.prefix))
+		bwd_fname = try_globs('{}/{}/{}???_bwd.fepout'.format(dirname, args.fepdirname, args.prefix))
 		if len(fwd_fname) == 0:
 			print('Could not find forward fepouts in {}'.format(dirname))
 			continue
@@ -78,6 +79,9 @@ def main():
 
 	num_feps = len(good_dirnames)
 	print('Processing {} FEPs.'.format(num_feps), file=sys.stderr)
+
+	if len(good_dirnames) == 0:
+		exit(1)
 
 	rows_per_page = 4
 	pdf = PdfPages(args.output)
@@ -99,26 +103,27 @@ def main():
 		offset = i % rows_per_page
 
 		if offset == 0:
+			print('Starting page {}'.format(page+1))
 			fig, ax = plt.subplots(rows_per_page, num_cols, figsize=(10, 7.5))
-			fig.tight_layout(h_pad=2)
+			fig.tight_layout(h_pad=3)
 
 		dirname = good_dirnames[i]
 		fwd, fwd_dg, lambdas = parse_fepout(fwd_fnames[dirname])
 		ax[offset][0].plot(fwd, linewidth=0.2, label='Forward')
-		ax[offset][0].set_title(dirname, fontsize=8, pad=3)
-		# ax[offset][0].set_ylabel('delta-G')
-		ax[offset][1].plot(lambdas, np.cumsum(fwd_dg), label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
+		ax[offset][0].set_title('{}/{}'.format(os.getcwd(), dirname), fontsize=8, pad=3)
+		ax[offset][1].plot(lambdas, np.cumsum(fwd_dg), marker='.', label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
+		# ax[offset][1].set_xlabel('λ')
+		# ax[offset][1].set_ylabel('ΔG')
 
 		if dirname in bwd_fnames:
 			bwd, bwd_dg, lambdas = parse_fepout(bwd_fnames[dirname])
 			ax[offset][0].plot(bwd, linewidth=0.2, label='Backward')
-			ax[offset][1].plot(lambdas, np.cumsum(bwd_dg), label='Backward: {:.2f} kcal/mol'.format(np.sum(bwd_dg)))
+			ax[offset][1].plot(lambdas, np.cumsum(bwd_dg), marker='.', label='Backward: {:.2f} kcal/mol'.format(np.sum(bwd_dg)))
 
 		# Show the legend because the dG sums are in it
 		ax[offset][1].legend(loc='best')
-		print('{} is on page {}'.format(dirname, page+1))
 
-		if offset == (rows_per_page - 1):
+		if offset == (rows_per_page - 1) or offset == (num_feps - 1):
 			pdf.savefig(fig)
 
 	pdf.close()
