@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Helper for optimizing force field parameters using NAMD
 import argparse
@@ -89,7 +89,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
 
     # Make a string representing this data point, for human consumption
     description = []
-    for key, dihedral in data['dihedrals'].iteritems():
+    for key, dihedral in data['dihedrals'].items():
         description.append(key + '_' + str(dihedral['angle']))
     description = '_'.join(description)
 
@@ -113,7 +113,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     # This holds those dihedrals static and forces the MM relaxation to happen around them.
     # To do this, we need to associate atom types to atom indices with the help of MDAnalysis
     u = mda.Universe(data['psf'], pdb_fname)
-    for key, dihedral in data['dihedrals'].iteritems():
+    for key, dihedral in data['dihedrals'].items():
         dihedral['atomtypes'] = [u.atoms[i].type for i in dihedral['indices']]
         dihedral['atomnames'] = [u.atoms[i].name for i in dihedral['indices']]
 
@@ -363,7 +363,7 @@ def parse_gaussian_dihedral_scan_log(fname):
             # We need to make a new dihedrals object for every point on the scan,
             # otherwise Python will keep reusing the same one and bork our results dict
             dihedrals = dict()
-            for indices_string, indices in dihedrals_scanned.iteritems():
+            for indices_string, indices in dihedrals_scanned.items():
                 dihedrals[indices_string] = {'indices': indices}
 
         # This and the following blocks extract the current energy for this dihedral set
@@ -495,7 +495,7 @@ def results_to_html(data, fname='results.html'):
     <th>Angle (degrees)</th></tr>"""
     for i in range(len(data)):
         indices, atomtypes, atomnames, angles = [], [], [], []
-        for key, dihedral in data[i]['dihedrals'].iteritems():
+        for key, dihedral in data[i]['dihedrals'].items():
             indices.append(dihedral['indices'])
             atomtypes.append(dihedral['atomtypes'])
             atomnames.append(dihedral['atomnames'])
@@ -577,7 +577,7 @@ def main():
     ap.add_argument('system_yaml')
     ap.add_argument('dihedral_scan_logs', nargs='+')
     args = ap.parse_args()
-    system = yaml.load(open(args.system_yaml))
+    system = yaml.load(open(args.system_yaml), Loader=yaml.SafeLoader)
     # We want to know what the QM energies that we are targeting are.
     # Hence we read in the hilariously unstructured output of Gaussian.
     dihedral_results = []
