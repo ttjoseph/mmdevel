@@ -57,7 +57,7 @@ class PDB:
         # print >> sys.stderr, "Read %d atoms from %s." % (len(self.atoms), filename)
 
     def nuke_solvent(self):
-        print >> sys.stderr, "Stripping solvent residues."
+        print("Stripping solvent residues.", file=sys.stderr)
         self.atoms = [atom for atom in self.atoms if atom.resname not in self.solvent_residues]
 
     def write(self, fp):
@@ -74,7 +74,7 @@ def get_energy_from_namd_log(namdlog, energy_type='TOTAL'):
     extract the total energy"""
     energy_index = None
     energy = None
-    for line in namdlog.split('\n'):
+    for line in namdlog.splitlines():
         tokens = line.split()
         if len(tokens) == 0: continue
         if tokens[0] == 'ETITLE:': energy_index = tokens.index(energy_type)
@@ -89,22 +89,22 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
 
     # Make a string representing this data point, for human consumption
     description = []
-    for key, dihedral in data['dihedrals'].items():
+    for key, dihedral in list(data['dihedrals'].items()):
         description.append(key + '_' + str(dihedral['angle']))
     description = '_'.join(description)
 
     # Pick a unique temporary file name
-    outputname = 'Dihedral_%s_%d' % (description, data['index'])
+    outputname = f"Dihedral_{description}_{data['index']}"
 
     # Replace coordinates with the supplied ones and write out a new (temporary) PDB
     coords = data['coords']
     if len(pdb.atoms) != len(coords):
-        print >>sys.stderr, 'PDB has %d atoms but I found %d atoms in the Gaussian output' % (len(pdb.atoms), len(coords))
+        print('PDB has %d atoms but I found %d atoms in the Gaussian output' % (len(pdb.atoms), len(coords)), file=sys.stderr)
     for i in range(len(pdb.atoms)):
         pdb.atoms[i].x = coords[i][0]
         pdb.atoms[i].y = coords[i][1]
         pdb.atoms[i].z = coords[i][2]
-    pdb_fname = '%s.initial.pdb' % outputname
+    pdb_fname = f'{outputname}.initial.pdb'
     pdb_fp = open(pdb_fname, 'w')
     pdb.write(pdb_fp)
     pdb_fp.close()
@@ -113,7 +113,7 @@ def calc_one_mm_energy(data, ignore_our_dihedrals=False):
     # This holds those dihedrals static and forces the MM relaxation to happen around them.
     # To do this, we need to associate atom types to atom indices with the help of MDAnalysis
     u = mda.Universe(data['psf'], pdb_fname)
-    for key, dihedral in data['dihedrals'].items():
+    for key, dihedral in list(data['dihedrals'].items()):
         dihedral['atomtypes'] = [u.atoms[i].type for i in dihedral['indices']]
         dihedral['atomnames'] = [u.atoms[i].name for i in dihedral['indices']]
 
@@ -194,7 +194,7 @@ run 0
     namdconf_fp.close()
 
     namd_wd = dirname(abspath(namdconf_fname))
-    p = subprocess.Popen([data['namd'], namdconf_fname], stdout=subprocess.PIPE, cwd=getcwd())
+    p = subprocess.Popen([data['namd'], namdconf_fname], stdout=subprocess.PIPE, cwd=getcwd(), universal_newlines=True)
     (namdlog, namdstderr) = p.communicate()
 
     # NAMD shouldn't be complaining. If it is, tell the user
@@ -229,8 +229,9 @@ run 0
     namdconf_fp = open(namdconf2_fname, 'w')
     namdconf_fp.write(namd_conf)
     namdconf_fp.close()
-    p = subprocess.Popen([data['namd'], namdconf2_fname], stdout=subprocess.PIPE, cwd=getcwd())
+    p = subprocess.Popen([data['namd'], namdconf2_fname], stdout=subprocess.PIPE, cwd=getcwd(), universal_newlines=True)
     (namdlog, namdstderr) = p.communicate()
+    namdlog = str(namdlog)
 
     # NAMD shouldn't be complaining. If it is, tell the user
     if namdstderr is not None:
@@ -240,9 +241,9 @@ run 0
     for energy_type in ('BOND', 'ANGLE', 'DIHED', 'IMPRP', 'ELECT', 'VDW'):
         data[energy_type] = get_energy_from_namd_log(namdlog, energy_type)
     data['mm_energy'] = get_energy_from_namd_log(namdlog, 'TOTAL')
-    print('%s: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (outputname,
+    print(('%s: MM=%.2f kcal/mol, QM=%.2f kcal/mol' % (outputname,
                 data['mm_energy'],
-                data['qm_energy']))
+                data['qm_energy'])))
 
 
     # Delete a file without caring whether it succeeds, such as if the file didn't exist in the first place
@@ -363,7 +364,7 @@ def parse_gaussian_dihedral_scan_log(fname):
             # We need to make a new dihedrals object for every point on the scan,
             # otherwise Python will keep reusing the same one and bork our results dict
             dihedrals = dict()
-            for indices_string, indices in dihedrals_scanned.items():
+            for indices_string, indices in list(dihedrals_scanned.items()):
                 dihedrals[indices_string] = {'indices': indices}
 
         # This and the following blocks extract the current energy for this dihedral set
@@ -383,7 +384,7 @@ def parse_gaussian_dihedral_scan_log(fname):
                     dihedrals[dihedral_string]['angle'] = float(get_token(lines[i], 3))
                 i += 1
                 if i >= len(lines):
-                    print('We got problems with %s' % fname)
+                    print(f'We got problems with {fname}', file=sys.stderr)
             
             dihedral_results.append({'dihedrals': dihedrals,
                                      'gaussian_log_filename': fname,
@@ -413,7 +414,7 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24, out=sys.stdou
     than the QM energy surface, to minimize sampling error.
     """
 
-    print('! Here is the CMAP table for %s %s' % (dihedral1, dihedral2))
+    print(('! Here is the CMAP table for %s %s' % (dihedral1, dihedral2)))
     coords, values = [], []
     dihedral1_atomtypes, dihedral2_atomtypes = None, None
     for d in data:
@@ -429,8 +430,8 @@ def make_single_cmap_table(data, dihedral1, dihedral2, spacing=24, out=sys.stdou
                     coords.append((d1['angle'] + period1, d2['angle'] + period2))
                     values.append(d['qm_energy'] - d['mm_energy'])
                     if (period1, period2) == (0, 0):
-                        sys.stderr.write('At %.2f %.2f, QM: %.2f, MM: %.2f, diff: %.2f\n' % \
-                            (d1['angle'], d2['angle'], d['qm_energy'], d['mm_energy'], d['qm_energy'] - d['mm_energy']))
+                        print(f"At {d1['angle']:.2f} {d2['angle']:.2f}, QM: {d['qm_energy']:.2f}, MM: {d['mm_energy']:.2f}, diff: {d['qm_energy'] - d['mm_energy']:.2f}",
+                            file=sys.stderr)
     
     # This is probably a dumb way to do this
     xi = []
@@ -472,13 +473,13 @@ def generate_data_uri_download(fname):
     is embedded as a data URI."""
     pretty_fname = basename(fname)
     with open(fname) as f:
-        payload = b64encode(f.read())
+        payload = b64encode(f.read().encode('utf8'))
         return '<a download="%s" href="data:text/plain;base64,%s">%s</a>' % (pretty_fname, payload, pretty_fname)
 
 
 def results_to_html(data, fname='results.html'):
     f = open(fname, 'w')
-    print('Writing HTML output to %s.' % fname)
+    print(f'Writing HTML output to {fname}.')
     qm_energy, mm_energy, x_vals = [], [], []
     for x in range(len(data)):
         x_vals.append(data[x]['index'])
@@ -495,7 +496,7 @@ def results_to_html(data, fname='results.html'):
     <th>Angle (degrees)</th></tr>"""
     for i in range(len(data)):
         indices, atomtypes, atomnames, angles = [], [], [], []
-        for key, dihedral in data[i]['dihedrals'].items():
+        for key, dihedral in list(data[i]['dihedrals'].items()):
             indices.append(dihedral['indices'])
             atomtypes.append(dihedral['atomtypes'])
             atomnames.append(dihedral['atomnames'])
@@ -581,26 +582,26 @@ def main():
     # We want to know what the QM energies that we are targeting are.
     # Hence we read in the hilariously unstructured output of Gaussian.
     dihedral_results = []
-    print('Loading %d Gaussian dihedral scan logs.' % len(args.dihedral_scan_logs))
+    print(f'Loading {len(args.dihedral_scan_logs)} Gaussian dihedral scan logs.')
     for fname in args.dihedral_scan_logs:
         dihedral_results.extend(parse_gaussian_dihedral_scan_log(fname))
 
     # Now we calculate the relaxed MM energy for each of those conformations.
     data = calc_mm_energy(system['psf'], system['pdb'], system['prms'], dihedral_results)
 
-    make_cmap_terms(data, '%s.cmap' % system['psf'])
-    print('Wrote CMAP terms to %s.cmap' % system['psf'])
+    make_cmap_terms(data, f'{system["psf"]}.cmap')
+    print(f'Wrote CMAP terms to {system["psf"]}.cmap')
 
     # Finally we should be able to make a plot of these energies, and make a table that
     # associates these energies to the actual dihedral angle we varied. Amazing!
-    results_to_html(data, '%s.dihedral_energy.html' % splitext(basename(system['psf']))[0])
+    results_to_html(data, f'{splitext(basename(system["psf"]))[0]}.dihedral_energy.html')
 
     # Write each conformation to a single PDB file with multiple frames
     # Load template PDB and its associated PSF
     pdb = PDB(system['pdb'])
 
     # Replace coordinates with the supplied ones and write out a new (temporary) PDB
-    pdb_fname = '%s.frames.pdb' % splitext(basename(system['psf']))[0]
+    pdb_fname = f"{splitext(basename(system['psf']))[0]}.frames.pdb"
     pdb_fp = open(pdb_fname, 'w')
 
     for i in range(len(data)):
@@ -611,12 +612,12 @@ def main():
             pdb.atoms[j].z = coords[j][2]
         pdb_fp.write('MODEL %d\n' % i)
         for energy_type in ('BOND', 'ANGLE', 'DIHED', 'IMPRP', 'ELECT', 'VDW'):
-            pdb_fp.write('REMARK  42 %s: %f\n' % (energy_type, data[i][energy_type]))
+            pdb_fp.write(f'REMARK  42 {energy_type}: {data[i][energy_type]}\n')
         pdb.write(pdb_fp)
         pdb_fp.write('TER\nENDMDL\n')
 
     pdb_fp.close()
-    print('Wrote coordinates of each frame to %s' % pdb_fname)
+    print(f'Wrote coordinates of each frame to {pdb_fname}')
 
     # End goal here is to be able to dynamically edit the PRM file we are creating
     # for this ligand, and watch the MM energy surface change in relation to the QM
