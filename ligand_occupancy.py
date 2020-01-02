@@ -34,7 +34,7 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     u = mda.Universe(args.psf, args.dcd)
-    protein_ca = u.select_atoms('protein and name CA and (sphzone 15 (segid PROA and resid 182))')
+    protein_ca = u.select_atoms('protein and name CA')
     ligand = u.select_atoms('resname %s' % args.ligand_resname)
 
     num_residues = len(protein_ca)
