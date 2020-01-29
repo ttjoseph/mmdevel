@@ -21,21 +21,25 @@ if os.path.isfile(skel_filename) is False:
 files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d' % int(re.search('\d+', k).group()))
 
 # No production restart file? Start from the end of equilibration
-if len(files) == 0:
-    files = glob.glob('step6.6_equilibration.restart.coor')
+start_from_equilibration = False
+for prev_run in ['step6.6_equilibration.restart.coor', 'mineq.restart.coor']:
+    files = glob.glob(prev_run)
+    if len(files) > 0:
+        start_from_equilibration = True
+        break
 
 if len(files) == 0:
     exit('Unable to find any NAMD restart files')
 last_restart_filename = files[-1]
-# Extract the last index number from the last restart filename
-last_index = int(re.search('\d+', last_restart_filename).group())
+last_index = 0
 
+# Extract the last index number from the last restart filename
 # If we are starting from equilibration, suppress fancy prediction of filenames
-if 'equilibration' in last_restart_filename:
+if start_from_equilibration:
     inputname = last_restart_filename.replace('.restart.coor', '')
-    last_index = 0
 else:
     inputname = '%s%d.restart' % (args.prefix, last_index)
+    last_index = int(re.search('\d+', last_restart_filename).group())
 
 # Next index should be one higher than the last one
 next_index = last_index + 1
