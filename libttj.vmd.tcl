@@ -201,73 +201,85 @@ proc draw_box {center_x center_y center_z size_x size_y size_z {color "yellow"}}
 }
 
 # Calculate per-residue RMSD over a trajectory.
+# Presumes that proteins are the same length.
 # The ref_molid frame is not advanced - only that of molid
-proc per_residue_rmsd {ref_molid molid ref_residues} {
-    set residue_offset 0
-    # Add offset to resids in the real MuOR to get the corresponding offset
-    # in the WSMuOR
-    set binding_pocket_residues {}
+proc per_residue_rmsd {ref_molid ref_segid ref_residues molid {outfile "-"}} {
+    set all_ref_residues [lsort -unique -dictionary [[atomselect $ref_molid "protein"] get resid]]
+    set all_target_residues [lsort -unique -dictionary [[atomselect $molid "protein"] get resid]]
+    set num_target_residues [llength $all_target_residues]
+    set num_ref_residues [llength $all_ref_residues]
+
+    if {$num_ref_residues != $num_target_residues} {
+        puts "Sequence lengths of molids $ref_molid ($num_ref_residues) and $molid ($num_target_residues) don't match."
+        puts "Which means they might not be the same protein."
+        puts "I'm not smart enough to decide which residues should be compared."
+        return 1
+    }
+
+    # Provide shorthand to specify alignment on all residues
+    if {$ref_residues == "all"} {
+        set ref_residues $all_ref_residues
+    }
+
+    # Cache atomselect objects for all residues in both proteins
+    set column_labels {}
+    set all_segids [lsort -unique [[atomselect $ref_molid protein] get segid]]
     set ref_res_sel {}
     set ws_res_sel {}
-    set column_labels {}
-    set good_ref_residues {}
-    set good_ws_residues {}
-    
-    # Cache atomselect objects for each residue
-    foreach resid $ref_residues {
-        set ws_resid [expr $resid + $residue_offset]
-        lappend binding_pocket_residues $ws_resid
-        set ws_res [atomselect $molid "protein and name CA and resid $ws_resid"]
-        # Am I living in a dream world? I have to use a command called "lindex" instead of a sane
-        # array subscripting notation, like [] as in essentially every other language?
-        set ref_res [atomselect $ref_molid "protein and name CA and resid $resid"]
-        set ref_res_name [string totitle [lindex [$ref_res get resname] 0]]
-        # If a residue does not exist in the ref molecule, don't use it for fitting
-        if {[llength [$ref_res get name]] == [llength [$ws_res get name]]} {
+    foreach segid $all_segids {
+        foreach resid $all_ref_residues {
+            set ref_res [atomselect $ref_molid "protein and segid $segid and resid $resid"]
+            set ws_res [atomselect $molid "protein and segid $segid and resid $resid"]
+            if {[llength [$ref_res list]] == 0} {
+                puts "Info: ref $segid:$resid does not exist"
+                continue
+            }
+            if {[llength [$ws_res list]] == 0} {
+                puts "Info: target $segid:$resid does not exist"
+                continue
+            }
             lappend ref_res_sel $ref_res
             lappend ws_res_sel $ws_res
-            lappend column_labels "$ref_res_name$resid"
-            lappend good_ref_residues $resid
-            lappend good_ws_residues $ws_resid
-
-            set ws_res_name [string totitle [lindex [$ws_res get resname] 0]]
-            # puts "$ref_res_name$resid -> $ws_res_name$ws_resid"
-        } else {
-            puts "Omitting: ref resid $resid which would map to target resid $ws_resid because one of them does not exist"
+            # Construct labels for columns in the output CSV file
+            set ref_res_name [string totitle [lindex [$ref_res get resname] 0]]
+            lappend column_labels "$ref_res_name${resid}_${segid}"
         }
     }
 
-    # Dump this into a file
-    set fd [open "rmsd_${ref_molid}_vs_${molid}.csv" "w"]
+    # We'll dump results into a CSV file
+    if {$outfile == "-"} {
+        set outfile "rmsd_${ref_molid}_vs_${molid}.csv"
+    }
+    set fd [open $outfile "w"]
 
     # Print CSV column headers
-    lappend column_labels "Combined"
+    lappend column_labels "AllFitResidues"
     puts $fd [join $column_labels ","]
 
-    # Select the atoms we're going to use.
+    # Select the atoms we're going to use for the fit
     # We do this outside the loop because each time you do this, a new object is created
-    set ref [atomselect $ref_molid "protein and name CA and resid $good_ref_residues"]
-    set ref_all [atomselect $ref_molid all]
-    set ws [atomselect $molid "protein and name CA and resid $good_ws_residues"]
-    set ws_all [atomselect $molid all]
-    set num_residues [llength $good_ref_residues]
+    set ref_fit [atomselect $ref_molid "protein and segid $ref_segid and name CA and resid $ref_residues"]
+    # set ref_all [atomselect $ref_molid all]
+    set target_fit [atomselect $molid "protein and segid $ref_segid and name CA and resid $ref_residues"]
+    set target_all [atomselect $molid all]
 
-    puts "Number of reference residues: [llength [$ref get name]]"
-    puts "Number of target residues: [llength [$ws get name]]"
+    puts "Number of reference residues used in fit: [llength [$ref_fit get name]]"
+    puts "Number of target residues used in fit: [llength [$target_fit get name]]"
     
-    # Iterate over frames. On each frame do a fit
+    # Iterate over frames of target. On each frame do a fit on $target and $ref
+    # against whatever frame the reference is on
+    set num_res_sel [llength $ref_res_sel]
     set num_frames [molinfo $molid get numframes]
-    # set num_frames 5
     for {set frame 0} {$frame < $num_frames} {incr frame} {
         # Set the current frame
-        $ws_all frame $frame
-        $ws frame $frame
+        $target_all frame $frame
+        $target_fit frame $frame
         # Do the alignment
-        set trans_mat [measure fit $ws $ref]
-        $ws_all move $trans_mat
-        set overall_rmsd [measure rmsd $ws $ref]
+        set trans_mat [measure fit $target_fit $ref_fit]
+        $target_all move $trans_mat
+        set all_fit_rmsd [measure rmsd $target_fit $ref_fit]
         set per_res_rmsd {}
-        for {set i 0} {$i < $num_residues} {incr i} {
+        for {set i 0} {$i < $num_res_sel} {incr i} {
             [lindex $ws_res_sel $i] frame $frame
             lappend per_res_rmsd [format "%.2f" [measure rmsd [lindex $ref_res_sel $i] [lindex $ws_res_sel $i]]]
         }
@@ -275,15 +287,18 @@ proc per_residue_rmsd {ref_molid molid ref_residues} {
         puts -nonewline $fd [join $per_res_rmsd ","]
         # Print the overall RMSD of all residues in question
         puts -nonewline $fd ","
-        puts $fd "$overall_rmsd"
+        puts $fd "$all_fit_rmsd"
     }
 
     # Close the output file
     close $fd
+    puts "Wrote output per-frame RMSD in CSV format to: $outfile"
 
     # Delete all those atomselect objects because apparently there is no garbage collection
-    $ref delete
-    $ws delete
+    # $ref delete
+    $ref_fit delete
+    $target_all delete
+    $target_fit delete
     foreach sel $ref_res_sel { $sel delete }
     foreach sel $ws_res_sel { $sel delete }
 }
