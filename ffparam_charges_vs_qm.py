@@ -79,7 +79,7 @@ def parse_waterint_log(filename):
             # print '%s: Energy: %f (relative: %f)' % (filename, scf, scf - energies[0])
 
         i += 1
-    print >>sys.stderr, 'Found %d energies and %d coord sets in %s' % (len(energies), len(coords), filename)
+    print('Found %d energies and %d coord sets in %s' % (len(energies), len(coords), filename), file=sys.stderr)
     return energies, coords, optimized_params
 
 
@@ -89,16 +89,16 @@ def load_psf(filename):
     # Eat header
     l = psf.readline()
     if l[0:3] != "PSF":
-        print >>sys.stderr, "%s doesn't look like a PSF file to me." % filename
+        print("%s doesn't look like a PSF file to me." % filename, file=sys.stderr)
         sys.exit(1)
     psf.readline() # Blank line
     (numlines, kind) = get_psf_block_header(psf)
-    for i in xrange(numlines): psf.readline()
+    for i in range(numlines): psf.readline()
     psf.readline()
 
     # !NATOM block contains, for each atom, its type and charge, as well as residue assignment
     (num_atoms, kind) = get_psf_block_header(psf)
-    print >>sys.stderr, "Number of atoms: %d" % num_atoms
+    print("Number of atoms: %d" % num_atoms, file=sys.stderr)
     residue_map, charges, atom_types = [], [], []
 
     # Parse each atom line
@@ -110,7 +110,7 @@ def load_psf(filename):
     last_resid, last_segment = -1, None
     num_residues = num_solute_residues = 0
     cys_sg_list = [] # atom indices of CYS SG atoms
-    for index in xrange(num_atoms):
+    for index in range(num_atoms):
         l = psf.readline()
         atom_index, segment, resid, resname, atomname, atomtype, charge, atomicweight, junk = l.strip().split()
         resid = int(resid)
@@ -130,7 +130,7 @@ def load_psf(filename):
         if found_end_of_solute is False and resname == "TIP3":
             found_end_of_solute = True
             num_solute_residues = num_residues - 1 # We subtract 1 because the residue count has incremented into the first non-solute atom
-            print >>sys.stderr, "Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues)
+            print("Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues), file=sys.stderr)
             
         if found_end_of_solute is False:
             num_solute_atoms += 1
@@ -138,7 +138,7 @@ def load_psf(filename):
             residue_map.append(num_residues - 1)
 
     psf.readline() # Blank line
-    print >>sys.stderr, "%s contains %d residues as far as I can tell" % (filename, num_residues)
+    print("%s contains %d residues as far as I can tell" % (filename, num_residues), file=sys.stderr)
 
     if found_end_of_solute is False:
         num_solute_residues = num_residues
@@ -158,7 +158,7 @@ def load_prm(filename):
     while l[0:4] != "NONB":
         l = prm.readline()
         if l == '':
-            print >>sys.stderr, 'load_prm: Seems to be no NONB block in %s. That is probably OK.' % filename
+            print('load_prm: Seems to be no NONB block in %s. That is probably OK.' % filename, file=sys.stderr)
             return params
         l = l.strip()
     if l[-1] == '-': l = prm.readline().strip()  # Eat extra nonsense
@@ -306,12 +306,12 @@ def main():
 
     ff_prm = {}
     for filename in system['prms']:
-        print >>sys.stderr, 'Loading force field parameter file %s...' % filename
+        print('Loading force field parameter file %s...' % filename, file=sys.stderr)
         ff_prm.update(load_prm(filename))
 
-    print >>sys.stderr, 'After loading all force field parameter files, I know about %d atomtypes.' % len(ff_prm.keys())
+    print('After loading all force field parameter files, I know about %d atomtypes.' % len(list(ff_prm.keys())), file=sys.stderr)
 
-    print >>sys.stderr, 'Loading ligand PSF %s...' % system['psf']
+    print('Loading ligand PSF %s...' % system['psf'], file=sys.stderr)
     ligand_psf = load_psf(system['psf'])
 
     # We use single-point energies for the compound in question as well as water
@@ -321,12 +321,12 @@ def main():
     sp_wat_energies, _, _ = parse_waterint_log(system['sp_wat_log'])
 
     # Extract the final QM energies from the water interaction calculations.
-    print >>sys.stderr, 'Scale factor for QM energies: %.4f.' % args.scale
-    print >>sys.stderr, 'Moving MM water by this much: %.2f Angstroms (negative means closer to ligand).' % args.shift
-    print >>sys.stderr, ''
-    print >>sys.stderr, 'Single-point ligand energy: %.4f kcal/mol' % sp_energies[-1]
-    print >>sys.stderr, 'Single-point water energy: %.4f kcal/mol' % sp_wat_energies[-1]
-    print >>sys.stderr, 'Interaction energies - single TIP3P vs ligand:'
+    print('Scale factor for QM energies: %.4f.' % args.scale, file=sys.stderr)
+    print('Moving MM water by this much: %.2f Angstroms (negative means closer to ligand).' % args.shift, file=sys.stderr)
+    print('', file=sys.stderr)
+    print('Single-point ligand energy: %.4f kcal/mol' % sp_energies[-1], file=sys.stderr)
+    print('Single-point water energy: %.4f kcal/mol' % sp_wat_energies[-1], file=sys.stderr)
+    print('Interaction energies - single TIP3P vs ligand:', file=sys.stderr)
 
     out = None
 
@@ -340,7 +340,7 @@ def main():
             # Don't fire up the CSV writer until we need it, because we don't know all the field names until now
             if out is None:
                 fieldnames = ['filename', 'qm_energy', 'mm_electro', 'mm_lj', 'mm_energy']
-                fieldnames.extend(qm_params[frame_i].keys())
+                fieldnames.extend(list(qm_params[frame_i].keys()))
                 out = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
                 out.writeheader()
 

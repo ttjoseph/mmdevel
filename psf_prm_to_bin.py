@@ -40,7 +40,7 @@ def get_psf_block_header(f):
     l = f.readline()
     num = int(l[0:8].strip())
     kind = l[10:].strip()
-    print >>sys.stderr, "Encountered %s block with %d records" % (kind, num)
+    print("Encountered %s block with %d records" % (kind, num), file=sys.stderr)
     return (num, kind)
 
 def parse_ints(l):
@@ -49,7 +49,7 @@ def parse_ints(l):
     
     num = len(l) - (len(l)%8)
     ret = []
-    for i in xrange(0, num, 8):
+    for i in range(0, num, 8):
         ret.append(int(l[i:i+8].strip()))
     return ret
     
@@ -57,7 +57,7 @@ def read_int_block(f, num_records, max_records_per_line):
     """Reads a block of integers from a PSF file.
     Assumes the file pointer is at the start of it."""
     data = []
-    for index in xrange(num_records/max_records_per_line):
+    for index in range(num_records/max_records_per_line):
         l = f.readline()
         data.extend(parse_ints(l))
 
@@ -75,16 +75,16 @@ if __name__ == '__main__':
     # Eat header
     l = psf.readline()
     if l[0:3] != "PSF":
-        print >>sys.stderr, "%s doesn't look like a PSF file to me." % sys.argv[1]
+        print("%s doesn't look like a PSF file to me." % sys.argv[1], file=sys.stderr)
         sys.exit(1)
     psf.readline() # Blank line
     (numlines, kind) = get_psf_block_header(psf)
-    for i in xrange(numlines): psf.readline()
+    for i in range(numlines): psf.readline()
     psf.readline()
 
     # !NATOM block contains, for each atom, its type and charge, as well as residue assignment
     (num_atoms, kind) = get_psf_block_header(psf)
-    print "Number of atoms: %d" % num_atoms
+    print("Number of atoms: %d" % num_atoms)
     residue_map = []
     charges = []
     atom_types = []
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     last_resid, last_segment = -1, None
     num_residues = num_solute_residues = 0
     cys_sg_list = [] # atom indices of CYS SG atoms
-    for index in xrange(num_atoms):
+    for index in range(num_atoms):
         l = psf.readline()
         atom_index = int(l[0:8].strip())
         segment = l[9:13].strip()
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         if found_end_of_solute is False and resname == "TIP3":
             found_end_of_solute = True
             num_solute_residues = num_residues - 1 # We subtract 1 because the residue count has incremented into the first non-solute atom
-            print "Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues)
+            print("Looks like you have %d atoms and %d residues in the solute (guessed by taking the atoms before the first TIP3)." % (num_solute_atoms, num_solute_residues))
 
         if found_end_of_solute is False:
             num_solute_atoms += 1
@@ -132,7 +132,7 @@ if __name__ == '__main__':
             residue_map.append(num_residues - 1)
 
     psf.readline() # Blank line
-    print "%d residues?" % num_residues
+    print("%d residues?" % num_residues)
 
     if found_end_of_solute is False:
         num_solute_residues = num_residues
@@ -157,7 +157,7 @@ if __name__ == '__main__':
     (num_impropers, kind) = get_psf_block_header(psf)
 
     if len(bonds)%2 != 0 or len(angles)%3 != 0:
-        print >>sys.stderr, "I didn't parse bonds or angles properly. Whoops!"
+        print("I didn't parse bonds or angles properly. Whoops!", file=sys.stderr)
         sys.exit(1)
 
     # OK. Now we're done reading the PSF file.
@@ -165,8 +165,8 @@ if __name__ == '__main__':
     # Generate list of distinct atom types
     the_types = list(set(atom_types))
     num_atom_types = len(the_types)
-    print "There are %d distinct atom types in the PSF." % len(the_types)
-    print "These are:", the_types
+    print("There are %d distinct atom types in the PSF." % len(the_types))
+    print("These are:", the_types)
     # num_solute_atoms should be equal to the index of the first solvent atom
 
     # We need to extract the LJ terms from the prm file. Happily, we don't
@@ -224,8 +224,8 @@ if __name__ == '__main__':
     lj1214 = [0] * ((num_atom_types**2 + num_atom_types)/2)
     lj614 = [0] * ((num_atom_types**2 + num_atom_types)/2)
     counter = 0
-    for i in xrange(num_atom_types):
-        for j in xrange(i+1):
+    for i in range(num_atom_types):
+        for j in range(i+1):
             # prm_* variables contain nonbonded paramters for all atom types but
             # we will only store information for those types that occur in the structure
             idx_a = prm_type.index(the_types[i])
@@ -257,10 +257,10 @@ if __name__ == '__main__':
             counter += 1
 
     # Associative array of bond types
-    print "Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576)
+    print("Making %d MB array for bond type cache. This is really slow." % (num_solute_atoms**2 / 1048576))
     # bond_type = array.array('B', [0] * num_solute_atoms * num_solute_atoms)
     bond_type = numpy.zeros((num_solute_atoms, num_solute_atoms), 'u1')
-    for i in xrange(0, len(bonds), 2):
+    for i in range(0, len(bonds), 2):
         atom_i = bonds[i] - 1
         atom_j = bonds[i+1] - 1
 
@@ -272,7 +272,7 @@ if __name__ == '__main__':
         bond_type[atom_i, atom_j] |= BOND
         bond_type[atom_j, atom_i] |= BOND
 
-    for i in xrange(0, len(angles), 3):
+    for i in range(0, len(angles), 3):
         atom_i = angles[i] - 1
         atom_j = angles[i+2] - 1
         if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
@@ -280,7 +280,7 @@ if __name__ == '__main__':
         bond_type[atom_i, atom_j] |= ANGLE
         bond_type[atom_j, atom_i] |= ANGLE
 
-    for i in xrange(0, len(dihedrals), 4):
+    for i in range(0, len(dihedrals), 4):
         atom_i = dihedrals[i] - 1
         atom_j = dihedrals[i+3] - 1
         if atom_i >= num_solute_atoms or atom_j >= num_solute_atoms:
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     # Output format:
     # Number of atoms, residues, atom types
     put_i32(out, num_solute_atoms)
-    print "I suspect there are %d residues in the solute." % num_solute_residues
+    print("I suspect there are %d residues in the solute." % num_solute_residues)
     put_i32(out, num_solute_residues)
     put_i32(out, num_atom_types)
 
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     # Output BondType
     # put_u8_array(out, bond_type)
     put_i32(out, num_solute_atoms * num_solute_atoms)
-    for atom_i in xrange(num_solute_atoms):
+    for atom_i in range(num_solute_atoms):
         out.write(struct.pack('%dB' % num_solute_atoms, *[x for x in bond_type[atom_i, :]]))
 
     # Output ResidueMap: Array of atom indexes for residues
@@ -327,4 +327,4 @@ if __name__ == '__main__':
     put_f32_array(out, lj1214)
     put_f32_array(out, lj614)
 
-    print "All done."
+    print("All done.")
