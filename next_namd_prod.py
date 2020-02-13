@@ -22,11 +22,12 @@ files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d'
 
 # No production restart file? Start from the end of equilibration
 start_from_equilibration = False
-for prev_run in ['step6.6_equilibration.restart.coor', 'mineq.restart.coor']:
-    files = glob.glob(prev_run)
-    if len(files) > 0:
-        start_from_equilibration = True
-        break
+if len(files) == 0:
+    for prev_run in ['step6.6_equilibration.restart.coor', 'mineq.restart.coor']:
+        files = glob.glob(prev_run)
+        if len(files) > 0:
+            start_from_equilibration = True
+            break
 
 if len(files) == 0:
     exit('Unable to find any NAMD restart files')
