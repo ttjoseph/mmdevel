@@ -39,8 +39,8 @@ last_index = 0
 if start_from_equilibration:
     inputname = last_restart_filename.replace('.restart.coor', '')
 else:
-    inputname = '%s%d.restart' % (args.prefix, last_index)
     last_index = int(re.search('\d+', last_restart_filename).group())
+    inputname = '%s%d.restart' % (args.prefix, last_index)
 
 # Next index should be one higher than the last one
 next_index = last_index + 1
