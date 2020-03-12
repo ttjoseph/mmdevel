@@ -312,3 +312,79 @@ proc range {from to} {
     }
     return $out
 }
+
+
+# Automate part of the process of aligning one trajectory to another, when
+# the proteins are similar but not structurally exactly the same.
+# In VMD, the easiest way I can see to do this normally is using the
+# STAMP structural alignment feature of the MultiSeq plugin to rotate
+# the first frame of the to-be-aligned trajectory, then align that
+# trajectory against that structure.
+# This function automates what STAMP is used for here, but not using
+# STAMP. Instead we use UCSF Chimera MatchMaker.
+proc generate_struct_align_ref {to_align_molid ref_molid} {
+    animate goto start
+    [atomselect $ref_molid protein] writepdb ref_prot.tmp.pdb
+    [atomselect $to_align_molid protein] writepdb to_align_prot.tmp.pdb
+    set f [open "align.tmp.cmd" "w"]
+    puts $f "mmaker #0 #1"
+    puts $f "write relative #0 #1 align_molid${to_align_molid}_to_me.pdb"
+    close $f
+    exec chimera --nogui --silent ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cmd
+    mol new "align_molid${to_align_molid}_to_me.pdb"
+    puts "Generated and loaded a proxy reference structure for molid ${to_align_molid}."
+}
+
+
+# Aligns a trajectory so as to remove global rotations and translations
+# Will use the first frame of ref_molid as reference. If not specified, use the
+# first frame of the trajectory
+proc align_trajectory {to_align_molid {ref_molid "same"}} {
+    if {$ref_molid eq "same"} {
+        set ref_molid $to_align_molid
+    }
+
+    puts "Aligning molid $to_align_molid against the first frame of reference molid $ref_molid."
+
+    set ref_sel [atomselect $ref_molid "backbone"]
+    set to_align_sel [atomselect $to_align_molid "backbone"]
+    set proteins_are_same 1
+
+    # Are these actually the same protein?
+    # If not, generate a temporary proxy reference structure that we can use "measure fit" with
+    if {[$ref_sel get resname] != [$to_align_sel get resname]} {
+        puts "But these are not the same protein because they have different resnames."
+        puts "Therefore, generating a proxy reference structure by structural alignment using Chimera MatchMaker."
+        generate_struct_align_ref $to_align_molid $ref_molid
+        # No need for the old reference atomselect...we need to use the new one now
+        $ref_sel delete
+        set ref_sel [atomselect top "backbone"]
+        set proteins_are_same 0
+    }
+
+    # Specify which atoms to move to best fit position: all of them
+    set move_sel [atomselect $to_align_molid "all"]
+    # Use only the first frame of the reference trajectory
+    $ref_sel frame 0
+
+    # Iterate over frames of to_align_molid
+    set num_frames [molinfo $to_align_molid get numframes]
+    for {set frame 0} {$frame < $num_frames} {incr frame} {
+        # Select the frame of the trajectory we will be fitting
+        $to_align_sel frame $frame
+        $move_sel frame $frame
+        # Calculate the transformation matrix for the fit
+        set mat [measure fit $to_align_sel $ref_sel]
+        # Actually move the atoms
+        $move_sel move $mat
+    }
+    # Clean up our atomselects, because we are a good citizen
+    $ref_sel delete
+    $to_align_sel delete
+    $move_sel delete
+    # If we generated a temporary proxy reference structure, delete it
+    if {$proteins_are_same eq 0} {
+        mol delete top
+    }
+    puts "Done with trajectory alignment. Enjoy!"
+}
