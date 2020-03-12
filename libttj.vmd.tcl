@@ -131,13 +131,6 @@ colvar {
 
 }
 
-# With a lambda schedule, we could fade away this restraint 
-harmonic {
-    colvars ligand_fb
-    forceConstant 0
-    centers 0
-}
-
 # Aped from https://github.com/colvars/colvars/blob/master/examples/03_orientation.colvars.in
 colvar {
     name dont_spin_protein
