@@ -51,7 +51,7 @@ def main():
 	ap.add_argument('dirname', nargs='+', help='Directories of simulation systems, with _fwd and _bwd fepouts in namd subdirectories')
 	ap.add_argument('--fepdirname', '-f', default='namd', help='Subdirectory under <dirname> containing .fepout files')
 	ap.add_argument('--prefix', '-p', default='dis5A', help='fepout file prefix')
-	ap.add_argument('--output', '-o', default='fep_plots.pdf', help='Output file')
+	ap.add_argument('--output', '-o', help='Output file')
 	args = ap.parse_args()
 
 	good_dirnames = []
@@ -84,7 +84,9 @@ def main():
 		exit(1)
 
 	rows_per_page = 4
-	pdf = PdfPages(args.output)
+	output_filename = args.output or f"{args.prefix}.fep.pdf"
+	print(f"Writing plots to: {output_filename}", file=sys.stderr)
+	pdf = PdfPages(output_filename)
 
 	# Ensure there are enough subplots for all the FEPs
 	num_cols = 2
@@ -105,12 +107,13 @@ def main():
 		if offset == 0:
 			print('Starting page {}'.format(page+1))
 			fig, ax = plt.subplots(rows_per_page, num_cols, figsize=(10, 7.5))
-			fig.tight_layout(h_pad=3)
+			fig.tight_layout(h_pad=2.0, w_pad=0.2)
 
 		dirname = good_dirnames[i]
 		fwd, fwd_dg, lambdas = parse_fepout(fwd_fnames[dirname])
 		ax[offset][0].plot(fwd, linewidth=0.2, label='Forward')
-		ax[offset][0].set_title('{}/{}'.format(os.getcwd(), dirname), fontsize=8, pad=3)
+		ax[offset][0].set_title(args.prefix, fontsize=8, pad=3)
+		ax[offset][1].set_title('{}/{}'.format(os.getcwd(), dirname), fontsize=8, pad=3)
 		ax[offset][1].plot(lambdas, np.cumsum(fwd_dg), marker='.', label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
 		# ax[offset][1].set_xlabel('λ')
 		# ax[offset][1].set_ylabel('ΔG')
