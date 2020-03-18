@@ -8,6 +8,29 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+
+# Draw broken bars as an annotation. This was intended to help draw protein domains.
+def do_broken_barh(csvfile, plt):
+    df = pd.read_csv(csvfile)
+    # Each horizontal bar is part of a group with a name.
+    groups = sorted(list(df['group'].unique()))
+    y_bottom, y_top = plt.gca().get_ylim()
+    counter = 0
+    colors = ['blue', 'red', 'green', 'purple', 'orange']
+
+    print("do_broken_barh: All sorts of hackiness in here. You might want to edit to source to get the output you want.")
+    y_top -= 3
+    for group in groups:
+        rows = df.query(f'group == "{group}"').sort_values(by=['xmin'])
+        print(rows)
+        plt.broken_barh(list(zip(rows['xmin'], rows['xwidth'])), (y_top-counter, 0.8), facecolors=colors[counter])
+        for idx, row in rows.iterrows():
+            plt.text(row['xmin'] + (row['xwidth'] / 2), y_top-counter+0.4, row['title'],
+                horizontalalignment='center', verticalalignment='center', fontsize='x-small',
+                color='white')
+        counter += 1
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Plot a CSV of time-series data')
     ap.add_argument('in_csv', help='Input CSV file')
@@ -18,6 +41,7 @@ if __name__ == '__main__':
     ap.add_argument('--x-scale', type=float, default=1, help='Scale index of X axis data by this much (e.g. to convert trajectory frame number to time)')
     ap.add_argument('--index-offsets', help='Add these numbers, comma-separated, to each respective index value, before scaling with --x-scale')
     ap.add_argument('--legend-labels', help='Comma-separated labels for the legend. Yes, that means you can\'t include a comma in a label')
+    ap.add_argument('--broken-barh-csv', help='CSV file specifying broken horizontal bars. Coordinates are post-transformation. Look at my source code')
     args = ap.parse_args()
 
     df = pd.read_csv(args.in_csv)
@@ -49,6 +73,10 @@ if __name__ == '__main__':
     labels = None
     if args.legend_labels is not None:
         labels = args.legend_labels.split(',')
+
+    # Do broken bar stuff
+    if args.broken_barh_csv is not None:
+        do_broken_barh(args.broken_barh_csv, plt)
 
     plt.legend(fontsize='x-small', loc='upper right', labels=labels)
     if labels == ['no']:
