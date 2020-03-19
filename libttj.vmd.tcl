@@ -1,7 +1,7 @@
 # Load all frames of a particular trajectory prefix
-proc load_all_frames { {prefix "prod"} } {
+proc load_all_frames { {prefix "prod"} {step 10} } {
     foreach i [lsort -dictionary [glob -nocomplain "$prefix*.dcd"]] {
-        mol addfile $i step 10 waitfor all
+        mol addfile $i step $step waitfor all
     }
 }
 
