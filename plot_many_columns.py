@@ -36,6 +36,7 @@ if __name__ == '__main__':
     ap.add_argument('in_csv', help='Input CSV file')
     ap.add_argument('out_img', help='Output image file')
     ap.add_argument('--columns', help='Column indices to include, comma-separated, starting from 0 (default: all)')
+    ap.add_argument('--title', help='Title for the graph')
     ap.add_argument('--x-label', default='', help='X-axis label')
     ap.add_argument('--y-label', default='', help='Y-axis label')
     ap.add_argument('--x-scale', type=float, default=1, help='Scale index of X axis data by this much (e.g. to convert trajectory frame number to time)')
@@ -60,8 +61,6 @@ if __name__ == '__main__':
 
     mpl.rcParams['lines.linewidth'] = 0.25
 
-    print(df.columns)
-
     i = 0
     for col_name, col_data in df.iteritems():
         this_index = (np.array(df.index) + index_offsets[i])*np.array(args.x_scale)
@@ -73,13 +72,15 @@ if __name__ == '__main__':
     labels = None
     if args.legend_labels is not None:
         labels = args.legend_labels.split(',')
+    else:
+        labels = df.columns
 
     # Do broken bar stuff
     if args.broken_barh_csv is not None:
         do_broken_barh(args.broken_barh_csv, plt)
 
     plt.legend(fontsize='x-small', loc='upper right', labels=labels)
-    if labels == ['no']:
-        plt.gca().get_legend().remove()
     plt.gcf().set_size_inches(7,4)
+    if args.title is not None:
+        plt.title(args.title)
     plt.savefig(args.out_img, dpi=600)
