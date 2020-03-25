@@ -332,15 +332,15 @@ proc generate_struct_align_ref {to_align_molid ref_molid} {
 # Aligns a trajectory so as to remove global rotations and translations
 # Will use the first frame of ref_molid as reference. If not specified, use the
 # first frame of the trajectory
-proc align_trajectory {to_align_molid {ref_molid "same"}} {
+proc align_trajectory {to_align_molid {ref_molid "same"} {align_sel "backbone"}} {
     if {$ref_molid eq "same"} {
         set ref_molid $to_align_molid
     }
 
     puts "Aligning molid $to_align_molid against the first frame of reference molid $ref_molid."
 
-    set ref_sel [atomselect $ref_molid "backbone"]
-    set to_align_sel [atomselect $to_align_molid "backbone"]
+    set ref_sel [atomselect $ref_molid $align_sel]
+    set to_align_sel [atomselect $to_align_molid $align_sel]
     set proteins_are_same 1
 
     # Are these actually the same protein?
@@ -351,7 +351,7 @@ proc align_trajectory {to_align_molid {ref_molid "same"}} {
         generate_struct_align_ref $to_align_molid $ref_molid
         # No need for the old reference atomselect...we need to use the new one now
         $ref_sel delete
-        set ref_sel [atomselect top "backbone"]
+        set ref_sel [atomselect top $align_sel]
         set proteins_are_same 0
     }
 
