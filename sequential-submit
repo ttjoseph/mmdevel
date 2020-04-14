@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Submit a series of scripts to the job queuing system that depend on each other
+# in sequential order. Detects whether we're using SLURM or LSF and adjusts
+# accordingly.
+
+# SLURM:
+# Submitted batch job 12345
+# sbatch -d afterok:12345 < job.sh
+
+# LSF:
+# Job <12345> is submitted to queue <whatever>.
+# bsub -w 'ended(12345)' < job.sh
+
+EXTRACT_JOBID_SLURM='s/Submitted batch job \([0-9]*\)$/\1/g'
+dep_slurm () { dep_string="-d afterok:$1"; }
+EXTRACT_JOBID_LSF='s/.*<\([0-9]*\)>.*/\1/g'
+dep_lsf () { dep_string="-w ended($1)"; }
+
+SUBMIT_CMD=$(which sbatch 2>/dev/null || which bsub 2>/dev/null)
+
+if [[ -z $SUBMIT_CMD ]]
+then
+    echo "Couldn't guess batch submission command. Either 'sbatch' or 'bsub' should be in your PATH."
+    exit
+fi
+
+for script in "$@"
+do
+     if [[ ! -f $script ]]
+     then
+        echo "Your submit script $script does not appear to exist"
+        exit
+    fi
+done
+
+dep_string=
+for script in "$@"
+do
+    if [[ $SUBMIT_CMD =~ sbatch ]]
+    then
+        last_jobid=$($SUBMIT_CMD $dep_string $script | sed "$EXTRACT_JOBID_SLURM")
+        dep_slurm $last_jobid
+    else
+        last_jobid=$($SUBMIT_CMD $dep_string < $script | sed "$EXTRACT_JOBID_LSF")
+        dep_lsf $last_jobid
+    fi
+
+    echo "Submitted $script with jobid $last_jobid. Next dependency string will be $dep_string"
+done
