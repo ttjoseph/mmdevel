@@ -8,7 +8,7 @@ proc load_all_frames { {prefix "prod"} {step 10} } {
 
 # Load structure and trajectory in a given directory, assuming you used CHARMM-GUI and
 # this is a membrane protein
-proc load_membrane_protein_system {dirname {prefix "prod"}} {
+proc load_membrane_protein_system {dirname {prefix "prod"} {step 10}} {
     set oldcwd [pwd]
     cd "$dirname"
     mol new step5_assembly.xplor_ext.psf
@@ -21,7 +21,7 @@ proc load_membrane_protein_system {dirname {prefix "prod"}} {
     mol modstyle 1 top "Lines"
     mol modselect 1 top "not (protein or lipid or resname CHL1 or water or ion)"
     cd "namd"
-    load_all_frames "$prefix"
+    load_all_frames "$prefix" $step
     cd "$oldcwd"
 }
 
@@ -329,6 +329,21 @@ proc generate_struct_align_ref {to_align_molid ref_molid} {
 }
 
 
+# Substitute a canonical name for the various states of histidine,
+# so that these don't cause align_trajectory to think the proteins are different
+proc sanitize_resname_list {resnames} {
+    set out_list ""
+    foreach res $resnames {
+        if {$res == "HSD" || $res == "HSP" || $res == "HSE"} {
+            lappend out_list "HIS"
+        } else {
+            lappend out_list $res
+        }
+    }
+    return $out_list
+}
+
+
 # Aligns a trajectory so as to remove global rotations and translations
 # Will use the first frame of ref_molid as reference. If not specified, use the
 # first frame of the trajectory
@@ -345,7 +360,7 @@ proc align_trajectory {to_align_molid {ref_molid "same"} {align_sel "backbone"}}
 
     # Are these actually the same protein?
     # If not, generate a temporary proxy reference structure that we can use "measure fit" with
-    if {[$ref_sel get resname] != [$to_align_sel get resname]} {
+    if {[sanitize_resname_list [$ref_sel get resname]] != [sanitize_resname_list [$to_align_sel get resname]]} {
         puts "But these are not the same protein because they have different resnames."
         puts "Therefore, generating a proxy reference structure by structural alignment using Chimera MatchMaker."
         generate_struct_align_ref $to_align_molid $ref_molid
@@ -380,4 +395,36 @@ proc align_trajectory {to_align_molid {ref_molid "same"} {align_sel "backbone"}}
         mol delete top
     }
     puts "Done with trajectory alignment. Enjoy!"
+}
+
+# Computes the RMSD of something over time from frame 0
+# Does NOT do a fit because maybe you wanted a global alignment done a particular way.
+# Or some other weird thing. So the caller needs to do that first.
+proc rmsd_over_time_nofit { {mol top} {seltext "noh"} } {
+    set ref [atomselect $mol "$seltext" frame 0]
+    set thing [atomselect $mol "$seltext"]
+    set num_frames [molinfo $mol get numframes]
+    set rmsd {}
+    for {set i 0} {$i < $num_frames} {incr i} {
+        $thing frame $i
+        lappend rmsd [measure rmsd $ref $thing]
+    }
+    # Be a good citizen and delete our atomselect objects
+    $ref delete
+    $thing delete
+    return $rmsd
+}
+
+# Write a list to a single column CSV file
+# Although with only one column there are no commas
+proc write_to_csv {data headername filename} {
+    # We'll dump results into a CSV file
+    set fd [open $filename "w"]
+
+    # Write CSV column header
+    puts $fd $headername
+
+    # Write the data
+    puts $fd [join $data "\n"]
+    close $fd
 }
