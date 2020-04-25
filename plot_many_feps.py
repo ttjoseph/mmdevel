@@ -70,7 +70,7 @@ def parse_fepout(fnames):
     return fepenergy, deltas, lambdas
 
 
-# TODO: Return the first matching glob of files
+# Return the first matching glob of files
 # This will allow us to use (for example) either dis5A000_fwd.fepout, or dis5A???.fepout
 def try_globs(*globspecs):
     for globspec in globspecs:
@@ -79,29 +79,20 @@ def try_globs(*globspecs):
             break
     return sorted(fnames)
 
-def main():
-    ap = argparse.ArgumentParser(description='Make a big plot of FEP curves')
-    ap.add_argument('dirname', nargs='+', help='Directories of simulation systems, with _fwd and _bwd fepouts in namd subdirectories')
-    ap.add_argument('--fepdirname', '-f', default='namd', help='Subdirectory under <dirname> containing .fepout files')
-    ap.add_argument('--prefix', '-p', default='dis5A,dis5B,dis5C', help='fepout file prefixes to try, comma-separated')
-    ap.add_argument('--output', '-o', help='Output file')
-    args = ap.parse_args()
 
+def find_fepouts(dirnames, fepdirname, prefixes):
     good_dirnames = []
     fwd_fnames, bwd_fnames = defaultdict(list), defaultdict(list)
-    for dirname in args.dirname:
+    for dirname in dirnames:
         if os.path.exists(dirname) is False or os.path.isdir(dirname) is False:
             print('Could not find directory {}.'.format(dirname), file=sys.stderr)
             continue
 
-        # TODO: Get this thing to try multiple fepout file prefixes...e.g. if no dis5B then do dis5A
-        # Or else, and probably better, accept a list of directories and fepout prefixes. Whatever corresponds
-        # to whatever we actually did.
-        # We need this because some of the FEPs used dis5B as the prefix, but most were dis5A
-        for prefix in args.prefix.split(','):
-            fwd_fname = try_globs(f'{dirname}/{args.fepdirname}/{prefix}???_fwd.fepout',
-                f'{dirname}/{args.fepdirname}/{prefix}???.fepout')
-            bwd_fname = try_globs(f'{dirname}/{args.fepdirname}/{prefix}???_bwd.fepout')
+        # Try each prefix (dis5A, dis5B, ...)
+        for prefix in prefixes.split(','):
+            fwd_fname = try_globs(f'{dirname}/{fepdirname}/{prefix}???_fwd.fepout',
+                f'{dirname}/{fepdirname}/{prefix}???.fepout')
+            bwd_fname = try_globs(f'{dirname}/{fepdirname}/{prefix}???_bwd.fepout')
 
             # For each directory, there are two dicts: one for forward fepouts, and another for backward
             # fepouts. We require at least a forward fepout. If no backward fepouts, just save an empty list.
@@ -122,6 +113,19 @@ def main():
 
             # Only care about this directory if we found a fepout
             good_dirnames.append(dirname)
+
+    return good_dirnames, fwd_fnames, bwd_fnames
+
+
+def main():
+    ap = argparse.ArgumentParser(description='Make a big plot of FEP curves')
+    ap.add_argument('dirname', nargs='+', help='Directories of simulation systems, with _fwd and _bwd fepouts in namd subdirectories')
+    ap.add_argument('--fepdirname', '-f', default='namd', help='Subdirectory under <dirname> containing .fepout files')
+    ap.add_argument('--prefix', '-p', default='dis5A,dis5B,dis5C', help='fepout file prefixes to try, comma-separated')
+    ap.add_argument('--output', '-o', help='Output file')
+    args = ap.parse_args()
+
+    good_dirnames, fwd_fnames, bwd_fnames = find_fepouts(args.dirname, args.fepdirname, args.prefix)
 
     num_feps = len(good_dirnames)
     print('Processing {} FEPs.'.format(num_feps), file=sys.stderr)
