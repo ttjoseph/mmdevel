@@ -36,7 +36,7 @@ def pretty(s):
 
 
 
-def parse_fepout(fnames):
+def parse_fepout(fnames, verbose=False):
     fepenergy, deltas, lambdas = list(), list(), list()
     lines = list()
 
@@ -44,7 +44,8 @@ def parse_fepout(fnames):
         fnames = [fnames,]
 
     for fname in fnames:
-        print(fname, file=sys.stderr)
+        if verbose:
+            print(f"parse_fepout: Processing {fname}...", file=sys.stderr)
         if os.path.exists(fname) is False:
             return None, None, None
         with open(fname) as f:
@@ -80,8 +81,8 @@ def try_globs(*globspecs):
     return sorted(fnames)
 
 
-def find_fepouts(dirnames, fepdirname, prefixes):
-    good_dirnames = []
+def find_fepouts(dirnames, fepdirname, prefixes, verbose=False):
+    good_dirnames = set()
     fwd_fnames, bwd_fnames = defaultdict(list), defaultdict(list)
     for dirname in dirnames:
         if os.path.exists(dirname) is False or os.path.isdir(dirname) is False:
@@ -103,18 +104,20 @@ def find_fepouts(dirnames, fepdirname, prefixes):
                 # print('Could not find forward fepouts in {}'.format(dirname))
                 continue
             else:
-                print(f"Found forward fepouts with prefix {prefix} in {dirname}")
+                if verbose:
+                    print(f"Found forward fepouts with prefix {prefix} in {dirname}", file=sys.stderr)
                 fwd_fnames[dirname].append(fwd_fname)
             if len(bwd_fname) == 0:
-                print('Could not find backward fepouts in {}'.format(dirname))
+                if verbose:
+                    print('Could not find backward fepouts in {}'.format(dirname), file=sys.stderr)
                 bwd_fnames[dirname].append([])
             else:
                 bwd_fnames[dirname].append(bwd_fname)
 
             # Only care about this directory if we found a fepout
-            good_dirnames.append(dirname)
+            good_dirnames.add(dirname)
 
-    return good_dirnames, fwd_fnames, bwd_fnames
+    return list(sorted(good_dirnames)), fwd_fnames, bwd_fnames
 
 
 def main():
