@@ -12,6 +12,7 @@ def pretty(s):
     s = s.replace('MDv2', '')
     s = s.replace('MD', '')
     s = s.replace('_try2', '')
+    s = s.replace('_run2', '')
     s = s.replace('LigandRMSD/', '')
     s = s.replace('r1', '').replace('r2', '')
     s = s.replace('SKE', 'S-ketamine')
@@ -47,7 +48,12 @@ def parse_fepout(fnames, verbose=False):
         if verbose:
             print(f"parse_fepout: Processing {fname}...", file=sys.stderr)
         if os.path.exists(fname) is False:
+            print(f"parse_fepout: I was asked to parse file {fname} but it doesn't seem to exist",
+                file=sys.stderr)
             return None, None, None
+        if os.path.getsize(fname) == 0:
+            print(f"parse_fepout: File {fname} exists but has zero size", file=sys.stderr)
+            return None, None, None        
         with open(fname) as f:
             lines.extend(f.readlines())
 
@@ -65,6 +71,7 @@ def parse_fepout(fnames, verbose=False):
             lambdas.append(float(tokens[6]))
 
     if len(lambdas) != len(deltas):
+        print(f"parse_fepout: While processing {fnames}:")
         print(f"parse_fepout: We have {len(lambdas)} lambdas but {len(deltas)} delta-G values", file=sys.stderr)
         return None, None, None
 
