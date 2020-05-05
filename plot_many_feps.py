@@ -5,6 +5,9 @@ import os
 from glob import glob
 from collections import defaultdict
 import numpy as np
+from matplotlib import rcParams
+rcParams['font.family'] = 'sans-serif'
+rcParams['font.sans-serif'] = ['Arial', 'Helvetica']
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
