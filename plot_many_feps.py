@@ -7,7 +7,7 @@ from collections import defaultdict
 import numpy as np
 from matplotlib import rcParams
 rcParams['font.family'] = 'sans-serif'
-rcParams['font.sans-serif'] = ['Arial', 'Helvetica']
+# rcParams['font.sans-serif'] = ['Arial', 'Helvetica']
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -185,10 +185,10 @@ def main():
             ax[offset, 0].set_title(pretty(dirname), fontsize=8, pad=3)
             ax[offset, 1].plot(lambdas, np.cumsum(fwd_dg), marker='.', label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
             # Only have axis labels on the outer edge of the page
-            ax[offset, 0].set_xlabel('λ')
-            ax[offset, 0].set_ylabel('∆ΔG (kcal/mol)')
-            ax[offset, 1].set_xlabel('λ')
-            ax[offset, 1].set_ylabel('ΔG (kcal/mol)')
+            ax[offset, 0].set_xlabel(u'\u03bb')
+            ax[offset, 0].set_ylabel(u'\u0394\u0394G (kcal/mol)')
+            ax[offset, 1].set_xlabel(u'\u03bb')
+            ax[offset, 1].set_ylabel(u'\u0394G (kcal/mol)')
             ax[offset, 0].label_outer()
             ax[offset, 1].label_outer()
             ax[offset, 1].yaxis.set_label_position("right")
