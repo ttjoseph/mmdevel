@@ -58,14 +58,35 @@ def parse_fepout(fnames, verbose=False):
             print(f"parse_fepout: File {fname} exists but has zero size", file=sys.stderr)
             return None, None, None        
         with open(fname) as f:
-            lines.extend(f.readlines())
+            theselines = f.readlines()
+            goodlines = []
+            line_counter = 1
+            for line in theselines:
+                # Check for malformed FepEnergy: lines
+                if line.startswith('FepEnergy'):
+                    tokens = line.split()
+                    if len(tokens) < 10:
+                        print(f"parse_fepout: Messed up FepEnergy line in {fname}:{line_counter} with line length {len(line)}", file=sys.stderr)
+                        print(f'Here are the first 200 characters in the line ({len(tokens)} tokens):', file=sys.stderr)
+                        print(line[:200], file=sys.stderr)
+                        continue
+                goodlines.append(line)
+
+            lines.extend(goodlines)
 
     for line in lines:
         tokens = line.split()
         if line.startswith('FepEnergy'):
             # A single sample
             # The energy is always in the tenth column
-            fepenergy.append(float(tokens[9]))
+            if len(tokens) < 10:
+                print(f"parse_fepout: Skipping messed up FepEnergy line", file=sys.stderr)
+                continue
+            energy = float(tokens[9])
+            if energy > 20:
+                print(f"parse_fepout: Skipping messed up FepEnergy energy {tokens[9]}", file=sys.stderr)
+                continue
+            fepenergy.append(energy)
         elif line.startswith('#Free'):
             # delta-G at end of window, in the twelfth column
             deltas.append(float(tokens[11]))
@@ -134,7 +155,7 @@ def main():
     ap = argparse.ArgumentParser(description='Make a big plot of FEP curves')
     ap.add_argument('dirname', nargs='+', help='Directories of simulation systems, with _fwd and _bwd fepouts in namd subdirectories')
     ap.add_argument('--fepdirname', '-f', default='namd', help='Subdirectory under <dirname> containing .fepout files')
-    ap.add_argument('--prefix', '-p', default='dis5A,dis5B,dis5C', help='fepout file prefixes to try, comma-separated')
+    ap.add_argument('--prefix', '-p', default='dis5A,dis5B,dis5C,idws5A', help='fepout file prefixes to try, comma-separated')
     ap.add_argument('--output', '-o', help='Output file')
     args = ap.parse_args()
 
@@ -179,13 +200,13 @@ def main():
             # Some of these files will be corrupt. TODO: Check before this so we don't have empty cells
             if fwd is None:
                 continue
-            ax[offset, 0].plot(fwd, linewidth=0.2, label='Forward')
+            ax[offset, 0].plot(np.arange(0, len(fwd))/len(fwd), fwd, linewidth=0.2, label='Forward')
             #ax[offset][0].set_title(args.prefix, fontsize=8, pad=3)
             # ax[offset][1].set_title('{}/{}'.format(os.getcwd(), dirname), fontsize=8, pad=3)
             ax[offset, 0].set_title(pretty(dirname), fontsize=8, pad=3)
             ax[offset, 1].plot(lambdas, np.cumsum(fwd_dg), marker='.', label='Forward: {:.2f} kcal/mol'.format(np.sum(fwd_dg)))
             # Only have axis labels on the outer edge of the page
-            ax[offset, 0].set_xlabel(u'\u03bb')
+            ax[offset, 0].set_xlabel(u'Fraction of all timesteps (\u03bb: 0 → 1)')
             ax[offset, 0].set_ylabel(u'\u0394\u0394G (kcal/mol)')
             ax[offset, 1].set_xlabel(u'\u03bb')
             ax[offset, 1].set_ylabel(u'\u0394G (kcal/mol)')
@@ -200,7 +221,7 @@ def main():
                 bwd, bwd_dg, lambdas = parse_fepout(bwd_fnames[dirname][fepout_i])
                 if bwd is None:
                     continue
-                ax[offset][0].plot(bwd, linewidth=0.2, label='Backward')
+                ax[offset][0].plot(np.arange(0, len(bwd))/len(fwd), bwd, linewidth=0.2, label='Backward')
                 ax[offset][1].plot(lambdas, np.cumsum(bwd_dg), marker='.', label='Backward: {:.2f} kcal/mol'.format(np.sum(bwd_dg)))
 
         # Show the legend because the dG sums are in it
