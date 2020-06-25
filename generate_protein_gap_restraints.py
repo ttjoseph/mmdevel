@@ -22,7 +22,7 @@ for res in protein.residues:
     if res.resid > last_res.resid + 1:
         print ('# Discontinuity between residues %s:%s%d and %s:%s%d (length %d)' \
                % (last_res.segid, last_res.resname, last_res.resid % 10000,
-               res.segid, last_res.resname, res.resid % 10000, res.resid - last_res.resid - 1))
+               res.segid, res.resname, res.resid % 10000, res.resid - last_res.resid - 1))
         colvar_name = 'gap_%s%d_%s%d' % (last_res.segid, last_res.resid % 10000, res.segid, res.resid % 10000)
         a1 = res.atoms.select_atoms('name CA')[0]
         a2 = last_res.atoms.select_atoms('name CA')[0]
