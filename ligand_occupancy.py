@@ -13,12 +13,6 @@ import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import *
 
-def residue_cmp(a, b):
-    """Comparator for residue names of the form ARG123, to enable friendly sorting"""
-    an, bn = int(a[3:]), int(b[3:])
-    if an == bn: return 0
-    if an < bn: return -1
-    return 1
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Where do ligands go? Useful for flooding simulations')
@@ -34,6 +28,7 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     u = mda.Universe(args.psf, args.dcd)
+    u.atoms.wrap(compound='fragments', inplace=True)
     protein_ca = u.select_atoms('protein and name CA')
     ligand = u.select_atoms('resname %s' % args.ligand_resname)
 
@@ -65,7 +60,7 @@ if __name__ == '__main__':
                 counts_coalesced[key] = 0
             counts_coalesced[key] += counts[i]
 
-        for key in sorted(list(counts_coalesced.keys()), cmp=residue_cmp):
+        for key in sorted(list(counts_coalesced.keys()), key=lambda res: int(res[3:])):
             percent_frames = 100*float(counts_coalesced[key])/len(u.trajectory)
             if counts_coalesced[key] > 0 and percent_frames > args.percent_frames_threshold:
                 print('%d\t%.2f%%\t%s' % (counts_coalesced[key], percent_frames, key))
