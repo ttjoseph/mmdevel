@@ -331,6 +331,8 @@ proc generate_struct_align_ref {to_align_molid ref_molid} {
     close $f
     exec chimera --nogui --silent ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cmd
     mol new "align_molid${to_align_molid}_to_me.pdb"
+    file delete ref_prot.tmp.pdb to_align_prot.tmp.pdb align_tmp.cmd
+    file delete "align_molid${to_align_molid}_to_me.pdb"
     puts "Generated and loaded a proxy reference structure for molid ${to_align_molid}."
 }
 
