@@ -13,39 +13,36 @@ def main():
 	args = ap.parse_args()
 
 	print('Loading system. I hope you have a lot of RAM...', file=sys.stderr)
+	
 	u = mda.Universe(args.psf, args.dcd, in_memory=True)
 
 	print("""Aligning the trajectory first, into a temporary file on disk.
 This is due to an implementation quirk of the MDAnalysis parallel module.
 NOTE: If the protein is split across periodic cells then this will all be wrong!""", file=sys.stderr)
 
-	protein = u.select_atoms("protein")
 	# Fit to the initial frame to get a better average structure
 	# (the trajectory is changed in memory)
-	prealigner = align.AlignTraj(u, u, select="protein and name CA",
-	                             in_memory=True).run()
+	prealigner = align.AlignTraj(u, u, select="protein and name CA", in_memory=True).run()
 
 	# ref = average structure
+	protein = u.select_atoms("protein")
 	ref_coordinates = u.trajectory.timeseries(asel=protein).mean(axis=1)
-	# Make a reference structure (need to reshape into a
-	# 1-frame "trajectory").
-	ref = mda.Merge(protein).load_new(ref_coordinates[:, None, :],
-	                                  order="afc")
-
-	aligner = align.AlignTraj(u, ref, select="protein and name CA",
-                          in_memory=True).run()
+	# Make a reference structure (need to reshape into a 1-frame "trajectory").
+	ref = mda.Merge(protein).load_new(ref_coordinates[:, None, :], order="afc")
+	aligner = align.AlignTraj(u, ref, select="protein and name CA", in_memory=True).run()
 
 	with NamedTemporaryFile(suffix='.dcd') as tmpdcd:
+		print(f"Writing the aligned trajectory to disk (at {tmpdcd.name})...", file=sys.stderr)
 		# need to write the trajectory to disk for PMDA 0.3.0 (see issue #15)
 		with mda.Writer(tmpdcd.name, n_atoms=u.atoms.n_atoms) as W:
 		    # Skip frames by only writing out non-skipped frames
 		    for ts in u.trajectory[args.skip_frames:]:
 	        	W.write(u.atoms)		
 		u = mda.Universe(args.psf, tmpdcd.name)
-		calphas = protein.select_atoms("protein and name CA")
+		calphas = u.select_atoms("protein and name CA")
 
+		print('Running RMSF calculation...', file=sys.stderr)
 		rmsfer = RMSF(calphas).run(n_blocks=8)
-
 		data = zip(calphas.resnums, rmsfer.rmsf)
 
 		print('resnum,rmsf')
