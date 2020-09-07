@@ -5,7 +5,12 @@ proc load_all_frames { {prefix "prod"} {step 10} } {
         puts "No DCD files with prefix $prefix were found."
     }
     foreach i $files {
-        mol addfile $i step $step waitfor all
+        # Use a regexp to avoid catching things like "prodB1" when the user specified only "prod"
+        if {[regexp "$prefix\[0-9\]+" $i]} {
+            mol addfile $i step $step waitfor all
+        } else {
+            puts "load_all_frames: Not loading $i since it isn't $prefix and a number."
+        }
     }
 }
 
