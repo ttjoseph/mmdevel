@@ -1,3 +1,5 @@
+package require psfgen
+
 # Load all frames of a particular trajectory prefix
 proc load_all_frames { {prefix "prod"} {step 10} } {
     set files [lsort -dictionary [glob -nocomplain "$prefix*.dcd"]] 
@@ -440,4 +442,57 @@ proc write_to_csv {data headername filename} {
     # Write the data
     puts $fd [join $data "\n"]
     close $fd
+}
+
+# Removes duplicates without sorting the input list - adapted from wiki.tcl.tk
+proc lunique {L} {
+    set unique_elements {}
+    foreach elt $L {
+        if {[lsearch -exact $unique_elements $elt] == -1} {
+            lappend unique_elements $elt
+        }
+    }
+    return $unique_elements
+}
+
+# Reads PSF/PDB, mutates one residue, then writes a new PSF and PDB.
+# Useful for relative FEP calculations among other things.
+# Example:
+# mutate_psf {toppar/toppar_water_ions.str top_all36_lipid_alchemy.rtf} step5_assembly.psf step5_assembly.pdb MEMB 1 POEA foo
+proc mutate_psf {rtfs psf pdb mutate_segid mutate_resid mutate_to out_prefix} {
+    # Split the supplied system into its constituent segments, because
+    # psfgen is too stupid to deal with them all together, from what I can tell
+    mol new $psf
+    mol addfile $pdb waitfor all
+
+    set segids [lunique [[atomselect top all] get segid]]
+    set seg_pdbs {}
+
+    # Load all our topologies
+    resetpsf
+    foreach rtf $rtfs {
+        topology $rtf
+    }
+
+    foreach segid $segids {
+        set seg_pdb "${out_prefix}.${segid}.tmp.pdb"
+        lappend seg_pdbs $seg_pdb
+        [atomselect top "segid $segid"] writepdb $seg_pdb
+
+        segment $segid {
+            pdb $seg_pdb
+            if {$segid == $mutate_segid} {
+                mutate $mutate_resid $mutate_to
+            }
+         }
+         coordpdb $seg_pdb $segid
+    }
+    guesscoord
+    writepsf "${out_prefix}.psf"
+    writepdb "${out_prefix}.pdb"
+
+    # Clean up temporary files
+    foreach seg_pdb $seg_pdbs {
+        file delete $seg_pdb
+    }
 }
