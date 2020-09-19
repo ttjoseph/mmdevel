@@ -91,8 +91,11 @@ def parse_fepout(fnames, verbose=False):
             # delta-G at end of window, in the twelfth column
             deltas.append(float(tokens[11]))
         elif line.startswith('#NEW FEP WINDOW'):
-            # Lambda value in seventh column
-            lambdas.append(float(tokens[6]))
+            # Choose the smallest value of the various reported lambdas to represent this window
+            lambda1, lambda2 = float(tokens[6]), float(tokens[8])
+            lambdaIDWS = float(tokens[10]) if 'IDWS' in line else np.Inf
+            # lambdas.append(np.min([lambda1, lambda2, lambdaIDWS]))
+            lambdas.append(lambda1)
 
     if len(lambdas) != len(deltas):
         print(f"parse_fepout: While processing {fnames}:")
