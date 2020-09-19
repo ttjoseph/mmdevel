@@ -496,3 +496,77 @@ proc mutate_psf {rtfs psf pdb mutate_segid mutate_resid mutate_to out_prefix} {
         file delete $seg_pdb
     }
 }
+
+proc _do_4term_extrabonds_line {molid params_dict keyword {fd stdout}} {
+    set all [atomselect top all]
+    foreach lipid [dict keys $params_dict] {
+        foreach segid [lunique [$all get segid]] {
+            set sel [atomselect $molid "segid $segid and resname $lipid"]
+            foreach resid [lunique [$sel get resid]] {
+                # Note that lrange is inclusive in its range
+                set atomnames [lrange [dict get $params_dict $lipid] 0 3]
+                set ref_val [lindex [dict get $params_dict $lipid] 4]
+                set res_sel [atomselect $molid "segid $segid and resname $lipid and resid $resid and name $atomnames"]
+                set indexes [$res_sel get index]
+                puts $fd "$keyword $indexes \$FC $ref_val"
+
+                $res_sel delete
+            }
+            $sel delete
+        }
+    }
+    $all delete
+}
+
+# Generates lipid restraints as used by the CHARMM-GUI lipid equilibration protocol.
+# Useful when you are, for example, doing AFEP on a lipid that CHARMM-GUI generated.
+proc generate_lipid_restraints {molid} {
+    # First we deal with the head atoms, and generate ${lipid}_head_{upper,lower}.ref files
+    # that specify what atoms are to be restrained in the lipid heads.
+
+    # Tcl gives a useless error message if you have a space after the line continuation backslash
+    set head_atoms_by_lipid [dict create \
+        "POEA" {P N "C1.*" "O1.*"} \
+        "POPE" {P N "C1.*" "O1.*"} \
+        "POPA" {P C1 "O1.*"} \
+    ]
+
+    puts "generate_lipid_restraints: Warning: I only know heads of:\n    [lsort [dict keys $head_atoms_by_lipid]]\nYou _must_ review the source because this proc is shady!"
+    set all [atomselect $molid all]
+
+    # Mark head atoms in upper (z > 0) and lower (z < 0) leaflets
+    foreach lipid [dict keys $head_atoms_by_lipid] {
+        $all set beta 0
+        set head_atoms [dict get $head_atoms_by_lipid $lipid]
+        set sel [atomselect $molid "resname $lipid and z > 0 and name $head_atoms"]
+        $sel set beta 1
+        $all writepdb "[string tolower $lipid]_head_upper.ref"
+        $sel delete
+
+        $all set beta 0
+        set sel [atomselect $molid "resname $lipid and z < 0 and name $head_atoms"]
+        $sel set beta 1
+        $all writepdb "[string tolower $lipid]_head_lower.ref"
+        $sel delete
+    }
+
+    # Now generate dihe.txt, which is used as input to NAMD extraBonds, and consists of lines like
+    # DIHEDRAL a b c d $FC 0.0
+    # IMPROPER a b c d $FC 120.0
+    # where a b c d are atom indices (zero-based!) in the lipid tails.
+    # This will be different according to lipid type, and are encoded in an inscrutable CHARMM script.
+    # So I'm only including certain lipid types piecemeal.
+    # First four are atom names, last is reference value
+    set eb_DIHEDRAL [dict create \
+        "POPE" "C28 C29 C210 C211 0.0" \
+    ]
+    set eb_IMPROPER [dict create \
+        "POPE" "C3 C1 C2 O21 120.0" \
+    ]
+
+    set fd [open "dihe.txt" "w"]
+    _do_4term_extrabonds_line $molid $eb_DIHEDRAL "DIHEDRAL" $fd
+    _do_4term_extrabonds_line $molid $eb_IMPROPER "IMPROPER" $fd
+    close $fd
+    $all delete
+}
