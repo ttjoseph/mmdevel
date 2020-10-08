@@ -570,3 +570,68 @@ proc generate_lipid_restraints {molid} {
     close $fd
     $all delete
 }
+
+
+# Generates (rough) table of corresponding residues between structurally similar structures.
+# Useful for e.g. WSMuOR vs MuOR - which residues in the derived version correspond to the original?
+#   distance_cutoff: how far away is too far between CA atoms to say the residues correspond
+proc guess_corresponding_residues {molid segid ref_molid {distance_cutoff 5}} {
+    # The structures must first be aligned
+    align_trajectory $molid $ref_molid
+
+    # Iterate through each residue of the molecule whose residues we are curious about
+    # Since each residue has an alpha carbon, use that.
+    # TODO: Does the segid really matter? Can we just get rid of it?
+    set mol_ca_sel [atomselect $molid "segid $segid and protein and name CA"]
+
+    set atom_indices [$mol_ca_sel list]
+    # Since atom indices and resids are simply labels and nothing can be assumed
+    # about their ordering or contiguity, we use a separate index to iterate through
+    # both simultaneously
+    foreach atom_idx $atom_indices {
+        # set atom_idx [lindex $atom_indices $i]
+        # What's the nearest atom in the reference molecule to this one?
+        # First, we need the coordinates of this atom
+        set this_atom_sel [atomselect $molid "index $atom_idx"]
+        set this_resid [$this_atom_sel get resid]
+        set x [$this_atom_sel get x]
+        set y [$this_atom_sel get y]
+        set z [$this_atom_sel get z]
+        set xyz [lindex [$this_atom_sel get {x y z}] 0]
+        # Find all CA atoms within $distance_cutoff of atom atom_idx
+        # Conceivably, we could get all the coordinates of everything and do the N^2 distance matrix calculation.
+        # However, the thought of doing anything in Tcl involving some sort of data structure is less than fun.
+        set d2 [expr $distance_cutoff * $distance_cutoff]
+        set nearest_ref_ca_sel [atomselect $ref_molid "protein and name CA and ((x-$x)*(x-$x) + (y-$y)*(y-$y) + (z-$z)*(z-$z)) < $d2"]
+        # We have an atomselect of the nearby alpha carbons in the reference molecule, but it isn't ordered.
+        # So we will need to calculate all the distances.
+        set nearest_ref_ca_idx [$nearest_ref_ca_sel get index]
+        set nearest_ref_ca_xyz [$nearest_ref_ca_sel get {x y z}]
+        # Now iterate through each and find the smallest distance
+        set num_nearest [llength $nearest_ref_ca_idx]
+        # Couldn't find anything within cutoff? Then this residue is unsalvageable
+        if {$num_nearest <= 0} {
+            puts "guess_corresponding_residues: No corresponding residue in reference for resid $this_resid"
+            continue
+        }
+        set closest_j -1
+        set closest_dist [expr $distance_cutoff + 1000]
+        for {set j 0} {$j < $num_nearest} {incr j} {
+            # Calculate distance and save the relevant atom if it was the closest
+            set dist [vecdist $xyz [lindex $nearest_ref_ca_xyz $j]]
+            if {$dist < $closest_dist} {
+                set closest_j $j
+                set closest_dist $dist
+            }
+        }
+        set closest_resid [lindex [$nearest_ref_ca_sel get resid] $closest_j]
+        set closest_resname [lindex [$nearest_ref_ca_sel get resname] $closest_j]
+        set this_resname [$this_atom_sel get resname]
+        puts "$this_resname$this_resid -> $closest_resname$closest_resid ($closest_dist A)"
+
+        # Garbage collection is for wimps and better interpreted languages
+        $nearest_ref_ca_sel delete
+        $this_atom_sel delete
+    }
+    $mol_ca_sel delete
+}
