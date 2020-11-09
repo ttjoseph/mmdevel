@@ -13,7 +13,7 @@
 # bsub -w 'ended(12345)' < job.sh
 
 EXTRACT_JOBID_SLURM='s/Submitted batch job \([0-9]*\)$/\1/g'
-dep_slurm () { dep_string="-d afterok:$1"; }
+dep_slurm () { dep_string="-d afterany:$1"; }
 EXTRACT_JOBID_LSF='s/.*<\([0-9]*\)>.*/\1/g'
 dep_lsf () { dep_string="-w ended($1)"; }
 
