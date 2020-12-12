@@ -209,7 +209,7 @@ proc draw_box {center_x center_y center_z size_x size_y size_z {color "yellow"}}
 # Calculate per-residue RMSD over a trajectory.
 # Presumes that proteins are the same length.
 # The ref_molid frame is not advanced - only that of molid
-proc per_residue_rmsd {ref_molid ref_segid ref_residues molid {outfile "-"}} {
+proc per_residue_rmsd {ref_molid ref_segid ref_residues molid {outfile "-"} {which_atoms "name CA"}} {
     set all_ref_residues [lsort -unique -dictionary [[atomselect $ref_molid "protein"] get resid]]
     set all_target_residues [lsort -unique -dictionary [[atomselect $molid "protein"] get resid]]
     set num_target_residues [llength $all_target_residues]
@@ -234,8 +234,8 @@ proc per_residue_rmsd {ref_molid ref_segid ref_residues molid {outfile "-"}} {
     set ws_res_sel {}
     foreach segid $all_segids {
         foreach resid $all_ref_residues {
-            set ref_res [atomselect $ref_molid "protein and segid $segid and resid $resid"]
-            set ws_res [atomselect $molid "protein and segid $segid and resid $resid"]
+            set ref_res [atomselect $ref_molid "protein and segid $segid and resid $resid and $which_atoms"]
+            set ws_res [atomselect $molid "protein and segid $segid and resid $resid and $which_atoms"]
             if {[llength [$ref_res list]] == 0} {
                 puts "Info: ref $segid:$resid does not exist"
                 continue
