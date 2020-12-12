@@ -11,6 +11,7 @@ import argparse
 
 ap = argparse.ArgumentParser(description='Create and print the "next" NAMD production simulation')
 ap.add_argument('--prefix', default='prod', help='Prefix to NAMD files: e.g. "prod"')
+ap.add_argument('--inputname', '-i', help='Input .coor file to use if no "prod" restart files available')
 args = ap.parse_args()
 
 # Get latest prod?.restart.coor, sorted properly numerically
@@ -18,19 +19,27 @@ args = ap.parse_args()
 skel_filename = '%s.skel.namd' % args.prefix
 if os.path.isfile(skel_filename) is False:
     exit('Skeleton NAMD config file %s does not seem to be there' % skel_filename)
-files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d' % int(re.search('\d+', k).group()))
+files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d' % int(re.search(r'\d+', k).group()))
 
 # No production restart file? Start from the end of equilibration
 start_from_equilibration = False
+# Maybe the user did some other min/eq protocol, or renamed the CHARMM-GUI ones
+# If they specified something explicit for inputname we should fail if we can't find it,
+# rather than falling back to what is probably the wrong one.
+if args.inputname is None:
+    inputnames_to_glob = ['step6.6_equilibration.restart.coor', 'step4_equilibration.restart.coor', 'mineq.restart.coor']
+else:
+    inputnames_to_glob = [args.inputname,]
+
 if len(files) == 0:
-    for prev_run in ['step*6.6_equilibration.restart.coor', 'step4_equilibration.restart.coor', 'mineq.restart.coor']:
+    for prev_run in inputnames_to_glob:
         files = glob.glob(prev_run)
         if len(files) > 0:
             start_from_equilibration = True
             break
 
 if len(files) == 0:
-    exit('Unable to find any NAMD restart files')
+    exit(f'Unable to find any NAMD restart files. I looked for {args.prefix}*.restart.coor and {inputnames_to_glob}')
 last_restart_filename = files[-1]
 last_index = 0
 
