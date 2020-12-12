@@ -11,7 +11,7 @@ import argparse
 
 ap = argparse.ArgumentParser(description='Create and print the "next" NAMD production simulation')
 ap.add_argument('--prefix', default='prod', help='Prefix to NAMD files: e.g. "prod"')
-ap.add_argument('--inputname', '-i', help='Input .coor file to use if no "prod" restart files available')
+ap.add_argument('--default-inputname', '-i', help='Input .coor file to use if no "prod" restart files available')
 args = ap.parse_args()
 
 # Get latest prod?.restart.coor, sorted properly numerically
@@ -26,10 +26,10 @@ start_from_equilibration = False
 # Maybe the user did some other min/eq protocol, or renamed the CHARMM-GUI ones
 # If they specified something explicit for inputname we should fail if we can't find it,
 # rather than falling back to what is probably the wrong one.
-if args.inputname is None:
+if args.default_inputname is None:
     inputnames_to_glob = ['step6.6_equilibration.restart.coor', 'step4_equilibration.restart.coor', 'mineq.restart.coor']
 else:
-    inputnames_to_glob = [args.inputname,]
+    inputnames_to_glob = [args.default_inputname,]
 
 if len(files) == 0:
     for prev_run in inputnames_to_glob:
