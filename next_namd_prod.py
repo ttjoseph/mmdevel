@@ -23,7 +23,7 @@ files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d'
 # No production restart file? Start from the end of equilibration
 start_from_equilibration = False
 if len(files) == 0:
-    for prev_run in ['step6.6_equilibration.restart.coor', 'step4_equilibration.restart.coor', 'mineq.restart.coor']:
+    for prev_run in ['step*6.6_equilibration.restart.coor', 'step4_equilibration.restart.coor', 'mineq.restart.coor']:
         files = glob.glob(prev_run)
         if len(files) > 0:
             start_from_equilibration = True
