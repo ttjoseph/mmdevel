@@ -10,7 +10,9 @@ from intervaltree import Interval, IntervalTree
 def get_fepout_lambda_range(filename):
     # If the file doesn't exist or isn't actually a file, it can't have a lambda
     if isfile(filename) is False:
-        return None
+        return []
+
+    windows = []
 
     with open(filename) as f:
         lines = f.readlines()
@@ -20,33 +22,19 @@ def get_fepout_lambda_range(filename):
                 # print('get_fepout_lambda_range: found it', file=sys.stderr)
                 tokens = lines[i].split()
                 try:
-                    return float(tokens[7]), float(tokens[8])
+                    windows.append((float(tokens[7]), float(tokens[8])))
                 except ValueError:
                     print(f"Unable to parse lambda range from the following line in {filename}:")
                     print(lines[i])
-                    return None
+                    # return None
+
+    return windows
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Returns a list of fepout filenames covering λ = [0, 1] with sanity checks")
-    ap.add_argument('-w', '--num-width', type=int, default=3, help='Width of number field (e.g. dis5A000 would be 3)')
-    ap.add_argument('arglist', nargs='+', metavar='arg', help="<prefix> <beg-end> [prefix] [beg-end] ...")
+    ap = argparse.ArgumentParser(description="Returns a list of IDWS fepout filenames covering λ = [0, 1] with sanity checks")
+    ap.add_argument('fileslist', nargs='+')
     args = ap.parse_args()
-
-    if len(args.arglist) % 2 != 0:
-        print(f'You provided {len(args.arglist)} argument(s) but only an even number of arguments is correct.', file=sys.stderr)
-        print('You want to do: <prefix> <beg-end> [prefix] [beg-end] ...')
-        exit(1)
-
-    # Parse which fepout files the user wants us to look at
-    num_args = len(args.arglist)
-    prefixes = args.arglist[0:num_args:2]
-    lambda_ranges = args.arglist[1:num_args:2]
-    lambda_begin, lambda_end = [], []
-    for r in lambda_ranges:
-        begin, end = (int(x) for x in r.split('-'))
-        lambda_begin.append(begin)
-        lambda_end.append(end)
 
     # Find all the fepout files to examine
     # Extract the lambda interval from each fepout file and add it to the interval tree
@@ -54,25 +42,17 @@ def main():
     #   - exists to begin with
     #   - is complete, having a correct last line
     #   - TODO: doesn't have some crazy high-magnitude ∆A at the end
-    files = dict()
     lambda_coverage = IntervalTree()
     last_idws_fname, last_idws_window = None, None
-    for i in range(len(prefixes)):
-        prefix = prefixes[i]
-        for num in range(lambda_begin[i], lambda_end[i]+1):
-            num_str = f"{num}".zfill(args.num_width)
-            fname = f'{prefix}{num_str}.fepout'
-
-            if fname in files:
-                print(f"Looks like you specified {fname} twice. I'll allow it.")
-            if isfile(fname) is False:
-                print(f'{fname} is not a file that is here', file=sys.stderr)
-                continue
-            lambdas = get_fepout_lambda_range(fname)
-            if lambdas is None:
-                print(f'{fname} is not a well formed fepout file', file=sys.stderr)
-                continue
-            files[fname] = lambdas
+    for fname in sorted(list(set(args.fileslist))):
+        if isfile(fname) is False:
+            print(f'{fname} is not a file that is here', file=sys.stderr)
+            continue
+        windows = get_fepout_lambda_range(fname)
+        if windows == []:
+            print(f'{fname} is not a well formed fepout file', file=sys.stderr)
+            continue
+        for lambdas in windows:
             if lambdas[0] == 1.0 and lambdas[1] < lambdas[0]:
                 last_idws_fname = fname
                 last_idws_window = lambdas
@@ -82,7 +62,7 @@ def main():
                     print(f"Lambdas {lambdas} already seen. Perhaps you are sloppily trying to merge two runs.")
                     return None
                 lambda_coverage.addi(lambdas[0], lambdas[1], fname)
-    
+
     # Ensure complete coverage from lambda = 0 to 1
     missing_range = IntervalTree()
     missing_range.addi(0.0, 1.0)
@@ -94,7 +74,6 @@ def main():
         print('\n'.join([f"    {x.begin} to {x.end}" for x in sorted(missing_range)]), file=sys.stderr)
         exit(1)
 
-
     files_to_print = [x.data for x in sorted(lambda_coverage)]
     if last_idws_window is not None and lambda_coverage.overlap(last_idws_window[1], last_idws_window[0]):
         files_to_print.append(last_idws_fname)
@@ -103,7 +82,8 @@ def main():
             file=sys.stderr)
         exit(1)
 
-    print(' '.join(files_to_print))
+    print('validate_fepouts.py: Complete set of IDWS fepout files is present. Hooray!', file=sys.stderr)
+    print(' '.join(sorted(list(set(files_to_print)))))
 
 if __name__ == "__main__":
     main()
