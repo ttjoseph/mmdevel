@@ -101,7 +101,6 @@ coordpdb {fname} {segid}
     psfgen_script += f"""
 writepsf {args.out_prefix}.psf
 writepdb {args.out_prefix}.pdb
-mol new sadjkfaldjs.pdb
 """
 
     if args.show_psfgen_script:
