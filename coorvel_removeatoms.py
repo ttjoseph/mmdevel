@@ -7,49 +7,7 @@
 import sys
 import argparse
 import numpy as np
-# from scipy.io import FortranFile
-
-
-class CoorVel(object):
-    """NAMD-format binary .coor or .vel file.
-
-    These have the same format: number of atoms (int32), followed by xyz coordinates for each atom as doubles.
-    Importantly, we assume everything is little endian, because most machines running NAMD these days are
-    in fact little endian.
-    """
-    def __init__(self, fname):
-        self.load(fname)
-
-    def load(self, fname):
-        """Loads .coor or .vel file into this object."""
-        # So format is totatoms (32-bit integer) then 3 doubles for each atom
-        # Assume little endian. Not sure if NAMD etc always write little endian or what.
-        num_atoms = np.fromfile(fname, dtype=np.dtype('<i4'), count=1, offset=0)
-        self.num_atoms = num_atoms[0]
-        self.coords = np.fromfile(fname, dtype=np.dtype('<f8'), offset=4, count=self.num_atoms*3)
-
-    def write(self, fname):
-        """Writes this object in binary format suitable for NAMD."""
-        f = open(fname, 'wb')
-        f.write(self.num_atoms.astype(np.dtype('<i4')).tobytes())
-        f.write(self.coords.tobytes())
-        f.close()
-
-    def excise(self, atom_indices):
-        """Removes specified atoms in place."""
-        # Convert atom indices to coordinate indices
-        # Ex: [2, 3] -> [2*3, 2*3+1, 2*3+2, 3*3, 3*3+1, 3*3+2]
-        x = atom_indices * 3
-        y = atom_indices * 3 + 1
-        z = atom_indices * 3 + 2
-        xyz = np.concatenate((x, y, z), axis=None)
-        xyz.sort()
-        # print(f'Deleting coord indices: {xyz}', file=sys.stderr)
-        # print(self.coords[xyz].reshape((-1, 3)), file=sys.stderr)
-        self.coords = np.delete(self.coords, xyz)
-        self.num_atoms -= len(atom_indices)
-
-
+from libttj import CoorVel
 
 def main():
     ap = argparse.ArgumentParser(description='Excise selected atoms from NAMD binary .coor/.vel files')
@@ -64,8 +22,10 @@ def main():
         print(f'Error: But this script expects little-endian data. If you know what you\'re doing, edit this script and try again.')
         exit(1)
 
-    coor = CoorVel(f'{args.prefix}.coor')
-    vel = CoorVel(f'{args.prefix}.vel')
+    coor = CoorVel()
+    coor.load(f'{args.prefix}.coor')
+    vel = CoorVel()
+    vel.load(f'{args.prefix}.vel')
     print(f'Starting with {coor.num_atoms} atoms in {args.prefix}.coor and {vel.num_atoms} atoms in {args.prefix}.vel.', file=sys.stderr)
 
     if coor.num_atoms != vel.num_atoms:
