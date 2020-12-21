@@ -67,8 +67,12 @@ proc set_beta_for_alignment {mol1 spec1 mol2 spec2} {
 
 # Assumes the top molecule is the system and we want to disappear $ligspec
 # and that the ligand is not a protein
-proc do_fep_preparations {ligspec} {
-	# Make disappear.fep
+proc do_fep_preparations {ligspec {filename_suffix {}}} {
+	if {$filename_suffix ne {}} {
+        set filename_suffix "${filename_suffix}."
+    }
+    
+    # Make disappear.fep
 	set all [atomselect top all]
 	set lig [atomselect top "$ligspec"]
 
@@ -77,8 +81,8 @@ proc do_fep_preparations {ligspec} {
 
 	# Tell NAMD which atoms to decouple
 	$lig set beta -1
-	$all writepdb disappear.fep
-	puts "# Wrote FEP atom selection disappear.fep"
+	$all writepdb disappear.${filename_suffix}fep
+	puts "# Wrote FEP atom selection disappear.${filename_suffix}fep"
 
 	# Tell colvars which atoms to use for reorientation
 	# Try to use a little under 80 atoms for the fit
@@ -96,14 +100,14 @@ proc do_fep_preparations {ligspec} {
 	puts ""
 
 	$restref set occupancy 1
-	$all writepdb rest_ref.pdb
-	puts "# Wrote restraint reference rest_ref.pdb"
+	$all writepdb "rest_ref.${filename_suffix}pdb"
+	puts "# Wrote restraint reference rest_ref.${filename_suffix}pdb"
 	$all set occupancy 0
 
 	# Reference structure to keep the protein from spinning
 	[atomselect top "protein and name CA"] set occupancy 1
-	$all writepdb dont_spin_ref.pdb
-	puts "# Wrote dont_spin_ref.pdb"
+	$all writepdb "dont_spin_ref.${filename_suffix}pdb"
+	puts "# Wrote dont_spin_ref.${filename_suffix}pdb"
 
 	# Show ligand atomNumbers for the benefit of colvars
 	set nums {}
@@ -113,7 +117,7 @@ proc do_fep_preparations {ligspec} {
 	# Show COM (COG?) of the ligand, again for colvars
 	set lig_center [join [measure center $lig] ", "]
 
-	set fd [open "restraints.ligand_fb.col" w]
+	set fd [open "restraints.ligand_fb.${filename_suffix}col" w]
 	puts $fd "# Colvars restraint setup for FEP for ligand \"$ligspec\"
 
 # Distance of ligand from its binding site
@@ -133,9 +137,9 @@ colvar {
             # fit to $restref_len protein atoms within $restref_radius A
             fittingGroup {
                 atomsCol O
-                atomsFile rest_ref.pdb
+                atomsFile rest_ref.${filename_suffix}pdb
             } 
-            refPositionsFile rest_ref.pdb       # ref protein coords for fitting. 
+            refPositionsFile rest_ref.${filename_suffix}pdb       # ref protein coords for fitting. 
         }
         group2 {
             dummyAtom ($lig_center)
@@ -150,9 +154,9 @@ colvar {
     orientation {
         atoms {
             atomsCol O
-            atomsFile dont_spin_ref.pdb
+            atomsFile dont_spin_ref.${filename_suffix}pdb
         }
-        refPositionsFile dont_spin_ref.pdb 
+        refPositionsFile dont_spin_ref.${filename_suffix}pdb 
     }
 }
 
@@ -164,7 +168,7 @@ harmonic {
     forceConstant 5.0
 }
 "
-	puts "# Wrote restraints colvars file restraints.ligand_fb.col"
+	puts "# Wrote restraints colvars file restraints.ligand_fb.${filename_suffix}col"
 	close $fd
 }
 
