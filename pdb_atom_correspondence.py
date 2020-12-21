@@ -75,11 +75,11 @@ def calculate_atoms_injection(u1_dict, u2_dict):
 
 
 def main():
-    ap = argparse.ArgumentParser(description='Map the atoms of one PDB to another')
+    ap = argparse.ArgumentParser(description='Remap .coor and .vel files according to coorespondence between PDBs')
     ap.add_argument('pdb1', help='A PDB file')
     ap.add_argument('pdb2', help='The other PDB file. This is supposed to be a bijection')
     ap.add_argument('coorvel_prefix', help='.coor/.vel prefix')
-    ap.add_argument('out_prefix', help='Out prefix for new .coorvel')
+    ap.add_argument('out_prefix', help='Out prefix for new .coor/.vel files that will work with pdb2')
     args = ap.parse_args()
 
     pdb1 = ShadyPDB(args.pdb1)
