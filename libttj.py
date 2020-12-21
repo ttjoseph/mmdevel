@@ -129,15 +129,19 @@ class ShadyPDB:
             f.close()
         
     def load_from_pdb(self, filename):
+        coords_set = set()
         pdb = open(filename)
         lines = pdb.readlines()
         for line in lines:
             if line.startswith("ATOM  "):
                 atom = AtomRecord(line)
                 self.atoms.append(atom)
+                coords_set.add((atom.x, atom.y, atom.z))
         pdb.close()
         self.create_indexes()
         print(f"ShadyPDB: Read {len(self.atoms)} atoms from {filename}.", file=sys.stderr)
+        if len(coords_set) != len(self.atoms):
+            print(f"ShadyPDB: Warning: More than one atom in {filename} has the same coordinates! This will ruin your simulation!")
 
 
 class CoorVel(object):
