@@ -27,13 +27,12 @@
 import sys
 import argparse
 import numpy as np
-import MDAnalysis as mda
-from libttj import CoorVel
+from libttj import CoorVel, ShadyPDB
 
 def calculate_atoms_bijection(u1, u2):
     # print('calculate_atoms_bijection: hashing...', file=sys.stderr)
-    u1_dict = hash_universe(u1)
-    u2_dict = hash_universe(u2)
+    u1_dict = hash_shadypdb(u1)
+    u2_dict = hash_shadypdb(u2)
     # The number of keys in each dict should be the same as the number of atoms
     # If this is not true then we have duplicate atoms
     if len(u1_dict.keys()) != len(u1.atoms):
@@ -53,9 +52,13 @@ def calculate_atoms_bijection(u1, u2):
     return a_to_b, np.array(a_not_in_b), np.array(b_not_in_a)
 
 
-def hash_universe(u):
-    """Makes a dict out of an MDAnalysis Universe, hashing atom name and position to the atom object itself."""
-    return {f'{a.name} {a.position}': a.ix for a in u.atoms}
+def hash_shadypdb(u):
+    """Makes a dict out of a ShadyPDB, hashing atom name and position to the atom object itself."""
+    d = {}
+    for a_idx in range(len(u.atoms)):
+        a = u.atoms[a_idx]
+        d[f'{a.atomname} {a.x} {a.y} {a.z}'] = a_idx
+    return d
 
 
 def calculate_atoms_injection(u1_dict, u2_dict):
@@ -79,15 +82,13 @@ def main():
     ap.add_argument('out_prefix', help='Out prefix for new .coorvel')
     args = ap.parse_args()
 
-    pdb1 = mda.Universe(args.pdb1)
-    pdb2 = mda.Universe(args.pdb2)
+    pdb1 = ShadyPDB(args.pdb1)
+    pdb2 = ShadyPDB(args.pdb2)
 
     pdb1_to_pdb2, pdb1_only_atomidx, pdb2_only_atomidx = calculate_atoms_bijection(pdb1, pdb2)
 
     print(f'Atoms in pdb1 only: {pdb1_only_atomidx.size} of {len(pdb1.atoms)}')
     print(f'Atoms in pdb2 only: {pdb2_only_atomidx.size} of {len(pdb2.atoms)}')
-
-    print(pdb1_only_atomidx)
 
     coor, vel = CoorVel(), CoorVel()
     coor.load(f'{args.coorvel_prefix}.coor')
@@ -100,7 +101,6 @@ def main():
     # Since pdb1_to_pdb2 is a bijection, we can just iterate to copy
     for a_ix, b_ix in pdb1_to_pdb2.items():
         a_offset, b_offset = a_ix*3, b_ix*3
-        # print(a_offset, b_offset)
         out_coor.coords[b_offset:b_offset+3] = coor.coords[a_offset:a_offset+3]
         out_vel.coords[b_offset:b_offset+3] = vel.coords[a_offset:a_offset+3]
 
@@ -117,7 +117,7 @@ def main():
                 file=sys.stderr)
         
     for b_ix in pdb2_only_atomidx:
-        out_coor.coords[b_ix:b_ix+3] = pdb2.atoms[b_ix].position
+        out_coor.coords[b_ix*3:b_ix*3+3] = pdb2.atoms[b_ix].position
 
     out_coor.write(f'{args.out_prefix}.coor')
     out_vel.write(f'{args.out_prefix}.vel')
