@@ -11,7 +11,7 @@ import argparse
 
 ap = argparse.ArgumentParser(description='Create and print the "next" NAMD production simulation')
 ap.add_argument('--prefix', default='prod', help='Prefix to NAMD files: e.g. "prod"')
-ap.add_argument('--default-inputname', '-i', help='Input .coor file to use if no "prod" restart files available')
+ap.add_argument('--default-inputname', '-i', help='Input .restart.coor file to use if no "prod" restart files available')
 args = ap.parse_args()
 
 # Get latest prod?.restart.coor, sorted properly numerically
