@@ -46,7 +46,7 @@ last_index = 0
 # Extract the last index number from the last restart filename
 # If we are starting from equilibration, suppress fancy prediction of filenames
 if start_from_equilibration:
-    inputname = last_restart_filename.replace('.restart.coor', '')
+    inputname = last_restart_filename.replace('.coor', '')
 else:
     last_index = int(re.search('\d+', last_restart_filename).group())
     inputname = '%s%d.restart' % (args.prefix, last_index)
