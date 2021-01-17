@@ -117,7 +117,8 @@ def main():
                 file=sys.stderr)
         
     for b_ix in pdb2_only_atomidx:
-        out_coor.coords[b_ix*3:b_ix*3+3] = pdb2.atoms[b_ix].position
+        a = pdb2.atoms[b_ix]
+        out_coor.coords[b_ix*3:b_ix*3+3] = a.x, a.y, a.z
 
     out_coor.write(f'{args.out_prefix}.coor')
     out_vel.write(f'{args.out_prefix}.vel')
