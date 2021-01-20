@@ -2,7 +2,11 @@
 #
 # Python library for molecular modeling stuff
 import sys
+from math import pi
 import numpy as np
+
+BOHRS_PER_ANGSTROM = 1.88972612
+KCAL_MOL_PER_HARTREE = 627.509474
 
 class AtomRecord:
     '''Represents a single atom.'''    
@@ -188,3 +192,42 @@ class CoorVel(object):
         # print(self.coords[xyz].reshape((-1, 3)), file=sys.stderr)
         self.coords = np.delete(self.coords, xyz)
         self.num_atoms -= len(atom_indices)
+
+
+def pbc_charge_correction(ion_charge, ion_radius, box_length, dielectric=80, verbose=False):
+    """Correction, in kcal/mol, for the charging of an ion in periodic boundary conditions.
+
+    From Eqn 17 in Simonson and Roux, Molecular Simulation, 2016
+    https://www.tandfonline.com/doi/full/10.1080/08927022.2015.1121544
+
+    Of note, the first term of the correction includes a division by the dielectrc constant.
+    Not all authors have done this, particularly for simulations with nonpolarizable force fields.
+    My naive suspicion is that polarizable force fields provide dielectric screening that
+    nonpolarizable force fields do not, and therefore the calculated ion charging energies
+    are lower. So the correction needs to take this into account. Since no (new) dipoles are
+    induced with a nonpolarizable force field, each periodic image point charge experiences the
+    full interaction energy with the others.
+    """
+    ZETA = -2.837297 # units are Hartree * Bohr
+    # 1 Angstrom is 1.88972612 Bohr, so we will convert sizes to Bohr
+    box_length *= BOHRS_PER_ANGSTROM
+    ion_radius *= BOHRS_PER_ANGSTROM
+    term1 = (ion_charge**2 * np.abs(ZETA))/(2*dielectric*box_length)
+    if ion_radius > 0:
+        term2 = (2*pi * ion_charge**2 * ion_radius**2) / (3 * box_length**3)
+        term2 *= (dielectric - 1) / dielectric
+    else:
+        if verbose:
+            print('pbc_charge_correction: No ion radius supplied, so not doing second term', file=sys.stderr)
+        term2 = 0
+    # term3 = O(R**2 L**-3 dielectric**-3)
+    # 1 Bohr is 0.529177211 Angstrom
+    # 1 Hartree, for one particle -> 627.509474 kcal/mol
+    # This correction is in Hartrees, but we want kcal/mol
+    if verbose:
+        print(f'term1 = {term1*KCAL_MOL_PER_HARTREE:.3f} kcal/mol; term2 = {term2*KCAL_MOL_PER_HARTREE:.3f} kcal/mol',
+            file=sys.stderr)
+    correction = term1 + term2
+    correction *= KCAL_MOL_PER_HARTREE
+    return correction
+
