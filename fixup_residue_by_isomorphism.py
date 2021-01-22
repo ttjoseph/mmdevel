@@ -13,7 +13,6 @@
 # and map all the residues.
 import sys
 import argparse
-from typing import Mapping
 import MDAnalysis as mda
 import networkx as nx
 
