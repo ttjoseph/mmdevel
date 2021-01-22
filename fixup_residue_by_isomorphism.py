@@ -16,7 +16,6 @@ import argparse
 from typing import Mapping
 import MDAnalysis as mda
 import networkx as nx
-from networkx.algorithms.isomorphism.tree_isomorphism import tree_isomorphism
 
 def residue_to_graph(u, residx):
     """Converts a residue in an MDAnalysis Universe, at 0-based index residx, to a NetworkX graph.
@@ -53,6 +52,7 @@ def main():
     ap.add_argument('pdb_from', help='PDB of residue whose atom names are wrong')
     ap.add_argument('pdb_to', help='PDB of residue whose atom names are correct')
     ap.add_argument('pdb_out', help='Filename to write updated version of pdb_to')
+    ap.add_argument('--verbose', '-v', action='store_true', help='Be noisy and show the mapping')
     args = ap.parse_args()
 
     u_from = mda.Universe(args.pdb_from, guess_bonds=True)
@@ -61,23 +61,29 @@ def main():
     # Build graphs for each residue
     g_from = residue_to_graph(u_from, 0)
     g_to = residue_to_graph(u_to, 0)
-    
+
     # Get the isomorphism between the two atom connectivities, complain if there isn't one
-    mapping = tree_isomorphism(g_from, g_to)
-    if len(mapping) == 0:
+    matcher = nx.algorithms.isomorphism.GraphMatcher(g_from, g_to)
+    if matcher.is_isomorphic() is False:
         print('Error: The first residue of each of those two PDBs are not isomorphic.', file=sys.stderr)
         exit(1)
 
+    if args.verbose:
+        for k, v in matcher.mapping.items():
+            print(k, v, file=sys.stderr)
+
     u_from.residues[0].resname = u_to.residues[0].resname
-    for atom_from, atom_to in mapping:
+    for atom_from, atom_to in matcher.mapping.items():
         a1_name, a1_idx = atom_from
         a2_name, a2_idx = atom_to
         if a1_name[0] != a2_name[0]:
-            print(f'Warning: {a1_name} in {pdb_from} may not be the same element as {a2_name} in {pdb_to}', file=sys.stderr)
+            print(f'Warning: {a1_name} in {args.pdb_from} may not be the same element as {a2_name} in {args.pdb_to}', file=sys.stderr)
         u_to.residues[0].atoms[a2_idx].position = u_from.residues[0].atoms[a1_idx].position
 
-    u_to.select_atoms('resid 1').write(args.pdb_out)
-    print(f'Wrote a single residue to {args.pdb_out}. I suppose you will be doing some copy and paste next.', file=sys.stderr)
+    u_to.select_atoms('all').write(args.pdb_out)
+    print(f'Wrote {args.pdb_out} with coordinates from the first residue in {args.pdb_from} and names from the first residue in {args.pdb_to}.', file=sys.stderr)
+    print(f'If there were hydrogens in {args.pdb_to}, their coordinates were not modified!', file=sys.stderr)
+    print(f'I suppose you will be doing some copy and paste next.', file=sys.stderr)
 
 
 if __name__ == "__main__":
