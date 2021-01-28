@@ -75,6 +75,8 @@ def main():
     for atom_from, atom_to in matcher.mapping.items():
         a1_name, a1_idx = atom_from
         a2_name, a2_idx = atom_to
+        # Check that the first character of each atom name is the same, as this customarily
+        # indicates what element it is.
         if a1_name[0] != a2_name[0]:
             print(f'Warning: {a1_name} in {args.pdb_from} may not be the same element as {a2_name} in {args.pdb_to}', file=sys.stderr)
         u_to.residues[0].atoms[a2_idx].position = u_from.residues[0].atoms[a1_idx].position
