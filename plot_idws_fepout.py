@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from plot_many_feps import parse_fepout
+from libttj import parse_fepout
 
 def main():
     ap = argparse.ArgumentParser(description='Plot FEP output (.fepout) after being processed with deinterleave_idws.py')
