@@ -74,6 +74,9 @@ alchLambda %(l0)f
 alchLambda2 %(l1)f
 %(idws_string)s
 source common_%(basenamdconf)s.namd
+# We must set first time step 0 right before running dynamics
+# If it isn't, the fepout format will be screwed up
+firsttimestep 0
 alchEquilSteps %(alchequilsteps)d
 run %(totalsteps)d
 """ % data
