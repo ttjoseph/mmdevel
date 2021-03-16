@@ -33,6 +33,11 @@ class AtomRecord:
         self.occupancy = float(line[54:60])
         self.tempfactor = float(line[60:66])
         self.segid = line[72:76].strip()
+
+        # This field is not part of the PDB standard.
+        # We need a residue index value because the PDB resid is not guaranteed to be
+        # unique! Some software just dumps in 
+        self.resindex = None
         
     def write(self, f):
         """Writes this atom to an ATOM record to an open file."""
@@ -70,27 +75,34 @@ class ShadyPDB:
         self.segid_to_resindex = {}
         self.resindex_to_atomindex = []
         last_resid, last_segid, last_resindex = self.atoms[0].resid, self.atoms[0].segid, 0
-        this_residue_atomidx = []
+        this_residue_atomidx, this_residue_atomnames = [], []
         
         for a_idx in range(len(self.atoms)):
             a_resid = self.atoms[a_idx].resid
             a_segid = self.atoms[a_idx].segid
+            # Keep track of the atom names we've seen so far in this residue
+            a_atomname = self.atoms[a_idx].atomname
             # Is this residue different from the last one?
             # Can happen when resid changes or when segid changes (resid might be the same,
             # for example when there is a one-residue segment)
-            if a_resid != last_resid or a_segid != last_segid:
+            # or when we see the same atom name again
+            if a_resid != last_resid or a_segid != last_segid or a_atomname in this_residue_atomnames:
                 # The residue (and possibly segment) changed, so save the current indexing we've done
                 if last_segid not in self.segid_to_resindex:
                     self.segid_to_resindex[last_segid] = []
                 self.segid_to_resindex[last_segid].append(last_resindex)
                 self.resindex_to_atomindex.append(this_residue_atomidx)
-
                 last_resindex += 1
                 last_resid = a_resid
                 last_segid = a_segid
-                this_residue_atomidx = []
+                this_residue_atomidx, this_residue_atomnames = [], []
+
+            # Save this atom's resindex (which is confusingly named and separate from resid).
+            # We do it here because we might have rolled over resindex in the if block just above.
+            self.atoms[a_idx].resindex = last_resindex
 
             this_residue_atomidx.append(a_idx)
+            this_residue_atomnames.append(a_atomname)
         # We won't trigger these actions on the last atom (or even once, if there's only one atom) so we do them now
         self.segid_to_resindex[last_segid].append(last_resindex)
         self.resindex_to_atomindex.append(this_residue_atomidx)
@@ -104,13 +116,17 @@ class ShadyPDB:
         """Renumber a subset of atoms, starting from 1."""
         new_atomid, new_resid = 1, 1
         sorted_atomindexes = list(sorted(atomindexes))
-        last_resid = self.atoms[sorted_atomindexes[0]].resid
+        last_resindex = self.atoms[sorted_atomindexes[0]].resindex
+        
         for a_idx in sorted_atomindexes:
-            if self.atoms[a_idx].resid != last_resid:
-                last_resid = self.atoms[a_idx].resid
+            a = self.atoms[a_idx]
+            if self.atoms[a_idx].resindex != last_resindex:
+                last_resindex = self.atoms[a_idx].resindex
                 new_resid += 1
-            self.atoms[a_idx].atomid = str(new_atomid)
-            self.atoms[a_idx].resid = str(new_resid)
+            if renumber_atoms:
+                self.atoms[a_idx].atomid = str(new_atomid)
+            if renumber_residues:
+                self.atoms[a_idx].resid = str(new_resid)
             new_atomid += 1
 
     def write_to_pdb(self, file, atomindexes=None, flush=True):

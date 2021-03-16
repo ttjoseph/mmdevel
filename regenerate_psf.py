@@ -33,11 +33,13 @@ def main():
     # splitting here, in Python. (This often is necessary when there is a bunch of water in a simulation system.)
     out_seg_suffixes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-    # u = mda.Universe(args.pdb)
     u = ShadyPDB(args.pdb)
     segs_to_process = []
     seg_i = 0
 
+    # Iterate over tuples that associate each residue index (NOT resid) to each segid.
+    # We use residue *index* rather than resid because the PDB resid field is too small
+    # to accommodate a lot of residues.
     for segid, resindexes in u.segid_to_resindex.items():
         out_seg_prefix = segid[0:3].strip()
 
@@ -75,7 +77,9 @@ def main():
             if (offset + length) >= len(resindexes):
                 length = len(resindexes) - offset
             
-            # print(f"{seg.segid} (chunk #{chunk_i}) -> {out_segid}: residue offset = {offset}, length = {length}", file=sys.stderr)            
+            # print(f"{seg.segid} (chunk #{chunk_i}) -> {out_segid}: residue offset = {offset}, length = {length}", file=sys.stderr)
+            print(f"offset: {offset}; length: {length}; len(resindexes): {len(resindexes)}",
+                file=sys.stderr)
             tmp = tempfile.NamedTemporaryFile(prefix=f'{out_segid}_', suffix='.pdb', delete=False)
 
             # Get all the atom indexes for this chunk then process them
