@@ -166,6 +166,20 @@ class ShadyPDB:
         if len(coords_set) != len(self.atoms):
             print(f"ShadyPDB: Warning: More than one atom in {filename} has the same coordinates! This will ruin your simulation!")
 
+    def set_coords_from_coorvel(self, coorvel):
+        """Overwrites our xyz coordinates with those from a CoorVel object that was hopefully loaded from a .coor file.
+
+        This is useful for remap_coorvel.py, where we may want to use the atom names from the starting PDB but the
+        coordinates from the in-progress simulation to decide what is the atom correspondence.
+        """
+        if len(coorvel.coords) != (len(self.atoms) * 3):
+            print(f'ShadyPDB: The PDB has {len(self.atoms)} atoms but the coorvel object has coords for {len(coorvel.coords)/3} atoms!',
+                file=sys.stderr)
+            return
+        
+        for i in range(len(self.atoms)):
+            self.atoms[i].x, self.atoms[i].y, self.atoms[i].z = coorvel.coords[i*3], coorvel.coords[i*3+1], coorvel.coords[i*3+2]
+
 
 class CoorVel(object):
     """NAMD-format binary .coor or .vel file.
