@@ -13,3 +13,5 @@ _cgo_*
 correl.txt
 decomp.txt
 pairs.txt
+.idea
+.vscode
