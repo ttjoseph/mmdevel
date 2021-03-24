@@ -31,6 +31,7 @@ def make_pdfbytes_of_text(text, media_box):
 def main():
 	ap = argparse.ArgumentParser(description="Concatenate PDFs, labeling them with prettified versions of their filenames")
 	ap.add_argument('--out', '-o', default='out.pdf', help='Output filename')
+	ap.add_argument('--page-number-prefix', '-p', default='', help='Prefix for each page number (e.g. "S" for S1, S2, ...)')
 	ap.add_argument('pdfs', nargs='+', help='PDF files to concatenate, in order')
 	args = ap.parse_args()
 
@@ -46,7 +47,7 @@ def main():
 		for page_i in range(this_num_pages):
 			page = this_pdf.getPage(page_i)
 
-			text_string = f"{fname.replace('_', ' ').replace('.pdf', '')} (p. {out_page_num})"
+			text_string = f"{fname.replace('_', ' ').replace('.pdf', '')} (p. {args.page_number_prefix}{out_page_num})"
 			page.mergePage(make_pdf_of_text(text_string, page))
 			output.addPage(page)
 			out_page_num += 1
