@@ -59,7 +59,10 @@ def main():
             else:
                 # print(f'{fname}: {lambdas}', file=sys.stderr)
                 if lambda_coverage.overlaps(lambdas[0], lambdas[1]):
-                    print(f"Lambdas {lambdas} already seen. Perhaps you are sloppily trying to merge two runs.")
+                    print(f"{fname} ({lambdas[0]} to {lambdas[1]}) overlaps with:")
+                    for iv in sorted(lambda_coverage.overlap(lambdas[0], lambdas[1]), key=lambda x: x.data):
+                        print(f"    {iv.data}: {iv.begin} to {iv.end}")
+                    print(f"Perhaps you are sloppily trying to merge two runs.")
                     return None
                 lambda_coverage.addi(lambdas[0], lambdas[1], fname)
 
