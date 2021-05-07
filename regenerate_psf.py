@@ -21,6 +21,7 @@ def main():
     ap.add_argument('pdb', help='PDB file to use')
     ap.add_argument('toppar_txt', help='File containing newline-separated list of psfgen-acceptable topology files')
     ap.add_argument('out_prefix', help='Prefix for output PSF and PDB files')
+    ap.add_argument('--disulfide-bonds', help='Specify disulfide bonds. Ex: PROA:1-PROA:2,PROA:4-PROA:5')
     ap.add_argument('--chunk-size', type=int, default=9999, help='Maximum number of residues in a segment that you think psfgen or whatever can handle')
     ap.add_argument('--vmd-output-file', help='Save the output of VMD in this file')
     ap.add_argument('--show-psfgen-script', action='store_true', help='Show the psfgen script that will be passed to VMD')
@@ -110,13 +111,19 @@ def main():
 {toppar_cmds}
 """
     for segid, fname in segs_to_process:
-        s = f"""
+        psfgen_script +=f"""
 segment {segid} {{
     pdb {fname}
 }}
-coordpdb {fname} {segid}
 """
-        psfgen_script += s
+    # Add disulfide bonds
+    for disu in args.disulfide_bonds.split(','):
+        res1, res2 = disu.split('-')
+        psfgen_script += f"patch DISU {res1} {res2}\n"
+
+    # Specify coordinates after the patches for disulfide bonds, according to psfgen user guide example
+    for segid, fname in segs_to_process:
+        psfgen_script += f"coordpdb {fname} {segid}\n"
 
     # We let user specify output prefix
     psfgen_script += f"""
