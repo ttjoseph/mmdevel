@@ -159,12 +159,15 @@ class ShadyPDB:
             if line.startswith("ATOM  "):
                 atom = AtomRecord(line)
                 self.atoms.append(atom)
+                if (atom.x, atom.y, atom.z) in coords_set:
+                    print(f"ShadyPDB: Coordinates of {atom.atomname} {atom.atomid} are duplicated. This is really bad!", file=sys.stderr)
                 coords_set.add((atom.x, atom.y, atom.z))
         pdb.close()
         self.create_indexes()
         print(f"ShadyPDB: Read {len(self.atoms)} atoms from {filename}.", file=sys.stderr)
         if len(coords_set) != len(self.atoms):
-            print(f"ShadyPDB: Warning: More than one atom in {filename} has the same coordinates! This will ruin your simulation!")
+            print(f"ShadyPDB: Warning: More than one atom in {filename} has the same coordinates! This will ruin your simulation!",
+                file=sys.stderr)
 
     def set_coords_from_coorvel(self, coorvel):
         """Overwrites our xyz coordinates with those from a CoorVel object that was hopefully loaded from a .coor file.
