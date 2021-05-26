@@ -333,7 +333,14 @@ def parse_fepout(fnames, verbose=False):
         print(f"parse_fepout: We have {len(lambdas)} lambdas but {len(deltas)} delta-G values", file=sys.stderr)
         return None, None, None
 
-    return fepenergy, deltas, lambdas
+    # Sort each list by the lambdas, since there's no guarantee the lambdas are in any
+    # particular order
+    fepenergy = np.array(fepenergy)
+    deltas = np.array(deltas)
+    lambdas = np.array(lambdas)
+    sorted_indices = np.argsort(lambdas)
+
+    return fepenergy[sorted_indices], deltas[sorted_indices], lambdas[sorted_indices]
 
 
 # Return the first matching glob of files
