@@ -42,6 +42,8 @@ elif args.lambda_scheme == 'right-dense-log':
     all_lambdas = 1-np.log(np.power(x, -1/3))
 elif args.lambda_scheme == 'left-dense-log':
     all_lambdas = 1-np.log(np.power(1-x, -1/3))
+elif args.lambda_scheme == 'evenly-spaced':
+    all_lambdas = x
 else:
     print(f"Error: Somehow, you specified lambda scheme {args.lambda_scheme}, which I don't know how to do.")
     exit(1)
