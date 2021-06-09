@@ -20,11 +20,7 @@ def main():
     args = ap.parse_args()
 
     labels = args.labels.split(',') if args.labels is not None else None
-
-    # fig, ax = plt.subplots(2, 1, figsize=(7.5, 10))
-    fig = plt.figure(figsize=(6, 4), dpi=300)
-    # fig.tight_layout(h_pad=2.0, w_pad=0.2, pad=5)
-    ax = fig.gca()
+    fig, ax = plt.subplots(2, 1, figsize=(7.5, 10))
 
     i = 0
     for prefix in args.prefix:
@@ -34,31 +30,39 @@ def main():
         fwd, fwd_dg, fwd_lambdas = parse_fepout(fwd_fname)
         bwd, bwd_dg, bwd_lambdas = parse_fepout(bwd_fname)
 
-        # both = np.concatenate((fwd, bwd), axis=None)
         both_dg = np.concatenate((fwd_dg, bwd_dg), axis=None)
-        both_lambdas = np.concatenate((fwd_lambdas, bwd_lambdas, [0]), axis=None)
-
         mean_sum_dg = np.mean([np.abs(np.sum(fwd_dg)), np.abs(np.sum(bwd_dg))])
-        cumul = np.concatenate(([0], both_dg.cumsum()))
         hysteresis = np.sum(both_dg)
 
-
-        #ax.set_xlabel(u'\u03bb')
-        #ax.set_ylabel(u'\u0394G (kcal/mol)')
-        ax.set(xlabel=None, ylabel=None)
         this_label = f"{labels[i]}: " if labels is not None else ''
-        ax.plot(both_lambdas, cumul, marker='.')
-        print(f"{this_label}mean {mean_sum_dg:.1f} kcal/mol, diff {hysteresis:.1f} kcal/mol")
-        #   label=f'{this_label}∆G = {mean_sum_dg:.1f} (diff = {hysteresis:.1f}) kcal/mol')
+        # Real data cumulative
+        ax[0].plot(fwd_lambdas, fwd_dg.cumsum(), alpha=0.5, marker='.', label=f'{prefix} forward')
+        ax[0].plot(fwd_lambdas, -bwd_dg.cumsum(), alpha=0.5, marker='.', label=f'{prefix} backward')
+        ax[1].plot(fwd_lambdas, np.array(fwd_dg) + np.array(bwd_dg), marker='.', label=f'{prefix} forward + backward')
+        data = list(zip(fwd_lambdas, np.array(fwd_dg), np.array(bwd_dg),
+            np.array(fwd_dg) + np.array(bwd_dg)))
+        for foo in data:
+            print(foo)
+        fig.text(0.13, 1-0.015*i-0.05, (f"{prefix}: {this_label}mean {mean_sum_dg:.1f} kcal/mol, diff {hysteresis:.1f} kcal/mol"))
 
         i += 1
 
-    # if args.title is not None:
-    #     ax.set_title(args.title, fontsize=8, pad=3)
+    if args.title is not None:
+        fig.suptitle(args.title)
 
+    for this_ax in ax:
+        this_ax.set_xlabel(u'\u03bb')
+        this_ax.set_ylabel(u'\u0394G (kcal/mol)')
+        this_ax.set_xticks(np.arange(0, 1.0, 0.1))
+        this_ax.legend()
+        this_ax.grid()
+
+    ax[0].set_title(f'Cumulative ∆G ({len(fwd_lambdas)} windows)')
+    ax[1].set_title('Sum of IDWS forward and backward ∆G values')
+
+    fig.tight_layout(h_pad=2.0, w_pad=0.2, pad=5)
     out_fname = args.output or f"{Path(args.prefix[0]).stem}.pdf"
     pdf = PdfPages(out_fname)
-    # pdf.savefig(fig, bbox_extra_artists=[ax.legend()])
     pdf.savefig(fig)
     pdf.close()
     print(f"Wrote graphs to {out_fname}.")
