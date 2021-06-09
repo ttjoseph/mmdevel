@@ -62,8 +62,8 @@ def main():
                     print(f"{fname} ({lambdas[0]} to {lambdas[1]}) overlaps with:")
                     for iv in sorted(lambda_coverage.overlap(lambdas[0], lambdas[1]), key=lambda x: x.data):
                         print(f"    {iv.data}: {iv.begin} to {iv.end}")
-                    print(f"Perhaps you are sloppily trying to merge two runs.")
-                    return None
+                    # print(f"Perhaps you are sloppily trying to merge two runs.")
+                    # return None
                 lambda_coverage.addi(lambdas[0], lambdas[1], fname)
 
     # Ensure complete coverage from lambda = 0 to 1
