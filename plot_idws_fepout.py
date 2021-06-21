@@ -15,7 +15,7 @@ def main():
     ap.add_argument('-t', '--title', help='Title to draw above graph')
     ap.add_argument('-l', '--labels', help='Comma-separated labels for prefixes, respectively')
     ap.add_argument('-o', '--output', help='Output file. Default: <prefix>.pdf')
-    # ap.add_argument('-c', '--cumul-only', type=bool, default=False, help='Plot only cumulative ∆G sum')
+    ap.add_argument('--shift-to-zero', action='store_true', help='Shift curve so that ∆G=0 at lambda=0')
     ap.add_argument('prefix', nargs='+', help='Prefix to post-process .fepout files. Example: foo -> foo_fwd.fepout and foo_bwd.fepout')
     args = ap.parse_args()
 
@@ -36,8 +36,12 @@ def main():
 
         this_label = f"{labels[i]}: " if labels is not None else ''
         # Real data cumulative
-        ax[0].plot(fwd_lambdas, fwd_dg.cumsum(), alpha=0.5, marker='.', label=f'{prefix} forward')
-        ax[0].plot(fwd_lambdas, -bwd_dg.cumsum(), alpha=0.5, marker='.', label=f'{prefix} backward')
+        fwd_cumsum, bwd_cumsum = fwd_dg.cumsum(), -bwd_dg.cumsum()
+        if args.shift_to_zero:
+            fwd_cumsum = fwd_cumsum - fwd_cumsum[0]
+            bwd_cumsum = bwd_cumsum - bwd_cumsum[0]
+        ax[0].plot(fwd_lambdas, fwd_cumsum, alpha=0.5, marker='.', label=f'{prefix} forward')
+        ax[0].plot(fwd_lambdas, bwd_cumsum, alpha=0.5, marker='.', label=f'{prefix} backward')
         ax[1].plot(fwd_lambdas, np.array(fwd_dg) + np.array(bwd_dg), marker='.', label=f'{prefix} forward + backward')
         data = list(zip(fwd_lambdas, np.array(fwd_dg), np.array(bwd_dg),
             np.array(fwd_dg) + np.array(bwd_dg)))
