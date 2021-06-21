@@ -31,20 +31,18 @@ def get_fepout_lambda_range(filename):
     return windows
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Returns a list of IDWS fepout filenames covering λ = [0, 1] with sanity checks")
-    ap.add_argument('fileslist', nargs='+')
-    args = ap.parse_args()
+def validate_fepouts(fileslist):
+    """Validate a set of fepout files, returning the list back if it's good, and None if not.
 
-    # Find all the fepout files to examine
-    # Extract the lambda interval from each fepout file and add it to the interval tree
-    # Along the way, ensure that that each fepout file:
-    #   - exists to begin with
-    #   - is complete, having a correct last line
-    #   - TODO: doesn't have some crazy high-magnitude ∆A at the end
+    Extract the lambda interval from each fepout file and add it to the interval tree
+    Along the way, ensure that that each fepout file:
+      - exists to begin with
+      - is complete, having a correct last line
+      - TODO: doesn't have some crazy high-magnitude ∆A at the end"""
+    
     lambda_coverage = IntervalTree()
     last_idws_fname, last_idws_window = None, None
-    for fname in sorted(list(set(args.fileslist))):
+    for fname in sorted(list(set(fileslist))):
         if isfile(fname) is False:
             print(f'{fname} is not a file that is here', file=sys.stderr)
             continue
@@ -59,7 +57,7 @@ def main():
             else:
                 # print(f'{fname}: {lambdas}', file=sys.stderr)
                 if lambda_coverage.overlaps(lambdas[0], lambdas[1]):
-                    print(f"{fname} ({lambdas[0]} to {lambdas[1]}) overlaps with:")
+                    print(f"validate_fepouts: Info: {fname} ({lambdas[0]} to {lambdas[1]}) overlaps with:")
                     for iv in sorted(lambda_coverage.overlap(lambdas[0], lambdas[1]), key=lambda x: x.data):
                         print(f"    {iv.data}: {iv.begin} to {iv.end}")
                     # print(f"Perhaps you are sloppily trying to merge two runs.")
@@ -73,20 +71,30 @@ def main():
         missing_range.chop(interval.begin, interval.end)
 
     if len(missing_range) > 0:
-        print('Error: You are missing some lambdas:', file=sys.stderr)
+        print('validate_fepouts: Error: You are missing some lambdas:', file=sys.stderr)
         print('\n'.join([f"    {x.begin} to {x.end}" for x in sorted(missing_range)]), file=sys.stderr)
-        exit(1)
+        return None
 
     files_to_print = [x.data for x in sorted(lambda_coverage)]
     if last_idws_window is not None and lambda_coverage.overlap(last_idws_window[1], last_idws_window[0]):
         files_to_print.append(last_idws_fname)
     else:
-        print(f"Last (backwards) IDWS window {last_idws_fname} spanning {last_idws_window} is messed up in some way",
+        print(f"validate_fepouts: Last (backwards) IDWS window {last_idws_fname} spanning {last_idws_window} is messed up in some way",
             file=sys.stderr)
-        exit(1)
+        return None
 
-    print('validate_fepouts.py: Complete set of IDWS fepout files is present. Hooray!', file=sys.stderr)
-    print(' '.join(sorted(list(set(files_to_print)))))
+    print('validate_fepouts: Complete set of IDWS fepout files is present. Hooray!', file=sys.stderr)
+    return(list(sorted(list(set(files_to_print)))))
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Returns a list of IDWS fepout filenames covering λ = [0, 1] with sanity checks")
+    ap.add_argument('fileslist', nargs='+')
+    args = ap.parse_args()
+    files_to_print = validate_fepouts(args.filelist)
+    if files_to_print is not None:
+        print(' '.join(files_to_print))
+
 
 if __name__ == "__main__":
     main()
