@@ -16,7 +16,7 @@ def main():
     ap.add_argument('-l', '--labels', help='Comma-separated labels for prefixes, respectively')
     ap.add_argument('-o', '--output', help='Output file. Default: <prefix>.pdf')
     ap.add_argument('--shift-to-zero', action='store_true', help='Shift curve so that ∆G=0 at lambda=0')
-    ap.add_argument('prefix', nargs='+', help='Prefix to post-process .fepout files. Example: foo -> foo_fwd.fepout and foo_bwd.fepout')
+    ap.add_argument('prefix', nargs='+', help='Prefix to post-processed .fepout files. Example: foo -> foo_fwd.fepout and foo_bwd.fepout')
     args = ap.parse_args()
 
     labels = args.labels.split(',') if args.labels is not None else None
