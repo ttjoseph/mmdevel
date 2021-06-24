@@ -58,15 +58,15 @@ def residue_to_graph(u, residx, include_hydrogens=False):
 
 def main():
     ap = argparse.ArgumentParser(description='Maps one residue with screwed up atom names to a gold standard residue, ignoring hydrogens')
-    ap.add_argument('pdb_from', help='PDB of residue whose atom names are wrong')
-    ap.add_argument('pdb_to', help='PDB of residue whose atom names are correct')
-    ap.add_argument('pdb_out', help='Filename to write updated version of pdb_to')
+    ap.add_argument('pdb_untamed', help='PDB of residue whose atom names are wrong')
+    ap.add_argument('pdb_template', help='PDB of residue whose atom names are correct')
+    ap.add_argument('pdb_out', help='Filename to write updated version of pdb_template')
     ap.add_argument('--include-hydrogens', '-i', action='store_true', help='Include hydrogens in mapping')
     ap.add_argument('--verbose', '-v', action='store_true', help='Be noisy and show the mapping')
     args = ap.parse_args()
 
-    u_from = mda.Universe(args.pdb_from, guess_bonds=True)
-    u_to = mda.Universe(args.pdb_to, guess_bonds=True)
+    u_from = mda.Universe(args.pdb_untamed, guess_bonds=True)
+    u_to = mda.Universe(args.pdb_template, guess_bonds=True)
 
     # Build graphs for each residue
     g_from = residue_to_graph(u_from, 0, args.include_hydrogens)
@@ -89,13 +89,13 @@ def main():
         # Check that the first character of each atom name is the same, as this customarily
         # indicates what element it is.
         if a1_name[0] != a2_name[0]:
-            print(f'Warning: {a1_name} in {args.pdb_from} may not be the same element as {a2_name} in {args.pdb_to}', file=sys.stderr)
+            print(f'Warning: {a1_name} in {args.pdb_untamed} may not be the same element as {a2_name} in {args.pdb_template}', file=sys.stderr)
         u_to.residues[0].atoms[a2_idx].position = u_from.residues[0].atoms[a1_idx].position
 
     u_to.select_atoms('all').write(args.pdb_out)
     print(f'An MDAnalysis warning above about unit cell dimensions is probably OK.', file=sys.stderr)
-    print(f'Wrote {args.pdb_out} with coordinates from the first residue in {args.pdb_from} and names from the first residue in {args.pdb_to}.', file=sys.stderr)
-    print(f'If there were hydrogens in {args.pdb_to}, their coordinates were not modified!', file=sys.stderr)
+    print(f'Wrote {args.pdb_out} with coordinates from the first residue in {args.pdb_untamed} and names from the first residue in {args.pdb_template}.', file=sys.stderr)
+    print(f'If there were hydrogens in {args.pdb_template}, their coordinates were not modified!', file=sys.stderr)
     print(f'I suppose you will be doing some copy and paste next.', file=sys.stderr)
 
 
