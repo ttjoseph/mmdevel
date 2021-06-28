@@ -23,7 +23,7 @@ proc load_membrane_protein_system {dirname {prefix "prod"} {step 10}} {
     set oldcwd [pwd]
     cd "$dirname"
     # These days CHARMM-GUI names the PSF file differently, so check for new and old
-    set psf [glob "namd/step5_charmm2namd.psf" "step5_assembly.xplor_ext.psf"]
+    set psf [glob "namd/step5_input.psf" "namd/step5_charmm2namd.psf" "step5_assembly.xplor_ext.psf"]
     mol new "$psf"
     mol rename top "${dirname}_${prefix}"
     mol delrep 0 top
