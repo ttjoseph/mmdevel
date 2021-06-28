@@ -72,7 +72,7 @@ class ShadyPDB:
         we can't trust that resids are either integers or unique outside a single
         segment. Same for atomid.
         """
-        self.segid_to_resindex = {}
+        self.segid_to_resindex = defaultdict(list)
         self.resindex_to_atomindex = []
         last_resid, last_segid, last_resindex = self.atoms[0].resid, self.atoms[0].segid, 0
         this_residue_atomidx, this_residue_atomnames = [], []
