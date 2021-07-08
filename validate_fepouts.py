@@ -91,7 +91,7 @@ def main():
     ap = argparse.ArgumentParser(description="Returns a list of IDWS fepout filenames covering λ = [0, 1] with sanity checks")
     ap.add_argument('fileslist', nargs='+')
     args = ap.parse_args()
-    files_to_print = validate_fepouts(args.filelist)
+    files_to_print = validate_fepouts(args.fileslist)
     if files_to_print is not None:
         print(' '.join(files_to_print))
 

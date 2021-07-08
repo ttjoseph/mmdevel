@@ -117,9 +117,10 @@ segment {segid} {{
 }}
 """
     # Add disulfide bonds
-    for disu in args.disulfide_bonds.split(','):
-        res1, res2 = disu.split('-')
-        psfgen_script += f"patch DISU {res1} {res2}\n"
+    if args.disulfide_bonds is not None:
+        for disu in args.disulfide_bonds.split(','):
+            res1, res2 = disu.split('-')
+            psfgen_script += f"patch DISU {res1} {res2}\n"
 
     # Specify coordinates after the patches for disulfide bonds, according to psfgen user guide example
     for segid, fname in segs_to_process:
