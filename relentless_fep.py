@@ -278,7 +278,7 @@ We assume that you have a config_myfep.namd file that will be included in the ge
     
     # If we need to 
     if total_steps_needed > 0:
-        print(f'We need {total_steps_needed} more steps.')
+        print(f'We need {total_steps_needed} more steps.', file=sys.stderr)
         # Ensure that the lambda1 specified in any existing fepouts is correct
         if config['lambda_schedule'].index(lambda1) != args.lambda_index:
             print(f'Error: lambda {lambda1} not in the right place in the configuration lambda_schedule', file=sys.stderr)
