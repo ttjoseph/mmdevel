@@ -117,7 +117,7 @@ proc do_fep_preparations {ligspec {filename_suffix {}}} {
 	# Show COM (COG?) of the ligand, again for colvars
 	set lig_center [join [measure center $lig] ", "]
 
-	set fd [open "restraints.ligand_fb.${filename_suffix}col" w]
+	set fd [open "restraints.${filename_suffix}colvars" w]
 	puts $fd "# Colvars restraint setup for FEP for ligand \"$ligspec\"
 
 # Distance of ligand from its binding site
