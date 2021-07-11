@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
+#
+# Given a description of the overall FEP calculation and a particular window's .fepout files,
+# generate a new .namd file that starts or continues the calculation for this window.
+# Intended to tolerate unexpectedly interrupted calculations, such as when your jobs are
+# preempted.
 import argparse
 import sys
 import re
-from yaml import safe_load, tokens
+from yaml import safe_load
 import os.path
 from glob import glob
 from string import ascii_lowercase
 from functools import reduce
 
-# Given a description of the overall FEP calculation and a particular window's .fepout files,
-# generate a new .namd file that continues the calculation for this window.
-# Of note, the .fepout files may be truncated.
-
-# Config file example (YAML format):
-# prefix: dis5A
-# idws: true
-# lambdas: 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
-# equil_steps_per_window: 200000
-# prod_steps_per_window: 1000000
-
-
+# How many MD steps are represented by a given .fepout file?
 # We'll use this to determine whether the fepout files for this window have enough steps
 def num_steps_in_fepout(fname):
     with open(fname) as f:
@@ -45,6 +39,7 @@ def num_steps_in_fepout(fname):
     return total_steps
 
 
+# Identifies the lambda values represented in a .fepout file
 def lambdas_for_fepout(fname):
     with open(fname) as f:
         lambda1, lambda2, lambda_idws = None, None, None
@@ -66,6 +61,10 @@ def lambdas_for_fepout(fname):
 
         return lambda1, lambda2, lambda_idws
 
+
+# Converts a number to a series of letters in base 26, like MS Excel does to label columns
+# These are used for suffixes to generated namd config files rather than the numbers
+# themselves, because that would be confusing.
 # From: https://stackoverflow.com/questions/48983939/convert-a-number-to-excel-s-base-26
 def divmod_base26(n):
     a, b = divmod(n, 26)
@@ -129,11 +128,14 @@ def generate_next_prefix(config, fnames):
     return out_prefix
         
 
+# Returns the newest restart file of a given prefix.
+# Assumes that you are using base26 suffixes, so that an alphabetical sort works.
 def get_latest_restart_prefix(prefix):
     files = list(sorted(glob(f"{prefix}*.coor")))
     if len(files) == 0:
         return None
     return files[-1].replace('.coor', '')
+
 
 # Returns the prefix of the restart files we should be using to start or continue this window.
 # In order of highest to lowest priority:
@@ -170,14 +172,15 @@ Sample configuration, in YAML format, that you would provide:
 
 lambda_schedule: [0, 0.1, 0.2, 0.22, 0.25, 0.3, 0.35, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 1.0]
 prefix: myfep
-start_config_prefix: prod1.restart
+start_config_prefix: prod1
 restart_frequency: 10000
 total_steps_per_window: 2000000
 windows_per_group: 5
 per_group_equil_steps: 500000
 per_window_equil_steps: 200000
 
-We assume that you have a config_myfep.namd file that will be included in the generated NAMD configuration.""")
+We assume that you have a config_myfep.namd file that will be included in the generated NAMD configuration.""",
+        formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument('config_yaml', help='YAML file describing this FEP calculation')
     # ap.add_argument('fepout_files', nargs='?', help='NAMD fepout files for a single window')
     ap.add_argument('lambda_index', type=int, help='Index in lambda_schedule for this window. We start counting at 0')
