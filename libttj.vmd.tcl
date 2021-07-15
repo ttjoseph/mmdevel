@@ -168,7 +168,7 @@ harmonic {
     forceConstant 5.0
 }
 "
-	puts "# Wrote restraints colvars file restraints.ligand_fb.${filename_suffix}col"
+	puts "# Wrote restraints colvars file restraints.${filename_suffix}colvars"
 	close $fd
 }
 
