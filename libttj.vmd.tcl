@@ -124,10 +124,6 @@ proc do_fep_preparations {ligspec {filename_suffix {}}} {
 colvar {
     name ligand_fb
 
-    width 1.0
-    upperBoundary 5.0
-    upperWallConstant 100 
-
     distance {
         group1 {
             # Ligand atom numbers
@@ -146,6 +142,13 @@ colvar {
         }
     }
 
+}
+
+harmonicWalls {
+    name ligand_fb_wall
+    colvars ligand_fb
+    upperWalls 5.0
+    upperWallConstant 100.0
 }
 
 # Aped from https://github.com/colvars/colvars/blob/master/examples/03_orientation.colvars.in
