@@ -6,11 +6,13 @@
 # 0 or 1). We need this sort of map so we can also modify the .coor and .vel files to continue
 # the simulation without having to re-minimize and equilibrate and everything.
 #
-# Usage: <pdb1> <pdb2> <coorvel_prefix> <out_prefix>
+# Usage: <in_prefix> <pdb2> <out_prefix>
 # 
-# pdb1 is the original PDB that you've been simulating, and for which you have good .coor and .vel
-# files (specified by coorvel_prefix). pdb2 is the new PDB, that you've probably generated from 
-# that .coor file after slight modification.
+# <in_prefix>.pdb is the original PDB that you've been simulating which corresponds to .coor and .vel
+# files <in_prefix>.coor and <in_prefix>.vel. pdb2 is the new PDB, that you've probably generated from 
+# that .coor file after slight modification. We need the PDBs to map the atoms to each other.
+# We force the .pdb, .coor, and .vel inputs to have the same prefix so it's harder for you specify
+# the wrong files.
 #
 # So, the workflow you probably want is as follows:
 #
@@ -27,6 +29,7 @@
 import sys
 import argparse
 import numpy as np
+from shutil import copyfile
 from libttj import CoorVel, ShadyPDB
 
 def calculate_atoms_bijection(u1, u2):
@@ -76,13 +79,22 @@ def calculate_atoms_injection(u1_dict, u2_dict):
 
 def main():
     ap = argparse.ArgumentParser(description='Remap .coor and .vel files according to coorespondence between PDBs')
-    ap.add_argument('pdb1', help='A PDB file')
-    ap.add_argument('pdb2', help='The other PDB file. This is supposed to be a bijection')
-    ap.add_argument('coorvel_prefix', help='.coor/.vel prefix')
+    ap.add_argument('in_prefix', help='Input .pdb/.coor/.vel files prefix')
+    ap.add_argument('pdb2', help='PDB file to map these coorvels to')
     ap.add_argument('out_prefix', help='Out prefix for new .coor/.vel files that will work with pdb2')
     args = ap.parse_args()
 
-    pdb1 = ShadyPDB(args.pdb1)
+    print(f"""Here is what I am going to do:
+
+    1. Take the atoms from {args.in_prefix}.pdb and map them to {args.pdb2}
+    2. Use this mapping to take the correct parts of {args.in_prefix}.coor and {args.in_prefix}.vel
+    3. Write those to {args.out_prefix}.coor and {args.out_prefix}.vel
+    4. Copy {args.in_prefix}.xsc to {args.out_prefix}.xsc
+    
+Assuming you have a .psf file that works with {args.pdb2}, you ought to then be able to run a simulation.
+""", file=sys.stderr)
+
+    pdb1 = ShadyPDB(f'{args.in_prefix}.pdb')
     pdb2 = ShadyPDB(args.pdb2)
 
     pdb1_to_pdb2, pdb1_only_atomidx, pdb2_only_atomidx = calculate_atoms_bijection(pdb1, pdb2)
@@ -91,8 +103,8 @@ def main():
     print(f'Atoms in pdb2 only: {pdb2_only_atomidx.size} of {len(pdb2.atoms)}')
 
     coor, vel = CoorVel(), CoorVel()
-    coor.load(f'{args.coorvel_prefix}.coor')
-    vel.load(f'{args.coorvel_prefix}.vel')
+    coor.load(f'{args.in_prefix}.coor')
+    vel.load(f'{args.in_prefix}.vel')
 
     out_coor, out_vel = CoorVel(), CoorVel()
     out_coor.blank(len(pdb2.atoms))
@@ -122,10 +134,10 @@ def main():
 
     out_coor.write(f'{args.out_prefix}.coor')
     out_vel.write(f'{args.out_prefix}.vel')
-
     print(f"Wrote {out_coor.num_atoms} atoms to {args.out_prefix}.coor and {args.out_prefix}.vel.", file=sys.stderr)
-    print(f"Ensure you generated a PSF to go with {args.pdb2}, perhaps using regenerate_psf.py,\nand then you ought to be able to run your simulation.",
-        file=sys.stderr)
+
+    copyfile(f'{args.in_prefix}.xsc', f'{args.out_prefix}.xsc')
+    print(f'Copied {args.in_prefix}.xsc to {args.out_prefix}.xsc.')
 
 
 if __name__ == "__main__":
