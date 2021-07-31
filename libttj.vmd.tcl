@@ -100,8 +100,11 @@ proc do_fep_preparations {ligspec {filename_suffix {}}} {
 	puts ""
 
 	$restref set occupancy 1
+	$lig set beta 1
 	$all writepdb "rest_ref.${filename_suffix}pdb"
-	puts "# Wrote restraint reference rest_ref.${filename_suffix}pdb"
+	puts "# Wrote restraint reference rest_ref.${filename_suffix}pdb, in which:"
+	puts "# - Protein backbone atoms used for reference have occupancy 1.0"
+	puts "# - Ligand atoms have beta 1.0"
 	$all set occupancy 0
 
 	# Reference structure to keep the protein from spinning
