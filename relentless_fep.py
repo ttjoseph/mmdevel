@@ -34,8 +34,12 @@ def num_steps_in_fepout(fname):
             if len(a_few_steps) < 2:
                 a_few_steps.append(step_num)
 
-    # Avoid fencepost error because the FepEnergy for the first timestep is not recorded
-    total_steps = max_step_num - min_step_num + (a_few_steps[1] - a_few_steps[0])
+    # NAMD will generate a fepout file with no steps in it, apparently?
+    if len(a_few_steps) < 2:
+        total_steps = 0
+    else:
+        # Avoid fencepost error because the FepEnergy for the first timestep is not recorded
+        total_steps = max_step_num - min_step_num + (a_few_steps[1] - a_few_steps[0])
     return total_steps
 
 
