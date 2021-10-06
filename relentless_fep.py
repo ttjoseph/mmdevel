@@ -202,14 +202,12 @@ We assume that you have a config_myfep.namd file that will be included in the ge
               file=sys.stderr)
         exit(1)
 
-    if config['lambda_schedule'][0] != 0.0:
-        print(f"Error: First lambda should be 0 and not {config['lambda_schedule'][0]}. I am finicky like that.", file=sys.stderr)
+    endpoint_lambdas = config['lambda_schedule'][0], config['lambda_schedule'][-1]
+    if endpoint_lambdas != (0.0, 1.0) and endpoint_lambdas != (1.0, 0.0):
+        print(f"Error: Lambda schedule should begin and end with 0.0 and 1.0, or vice versa.", file=sys.stderr)
+        print(f"       They are actually {endpoint_lambdas}. I am finicky like that.", file=sys.stderr)
         exit(1)
-        
-    if config['lambda_schedule'][-1] != 1.0:
-        print(f"Error: Last lambda should be 1.0 and not {config['lambda_schedule'][-1]}. Sorry.", file=sys.stderr)
-        exit(1)
-        
+       
     if len(set(config['lambda_schedule'])) != len(config['lambda_schedule']):
         print("Error: Looks like there are duplicated lambda values. That's too weird for me.", file=sys.stderr)
         exit(1)
@@ -218,19 +216,16 @@ We assume that you have a config_myfep.namd file that will be included in the ge
     # We have already ensured that the index is something within range
     lambda1 = config['lambda_schedule'][args.lambda_index]
     
-    # If we are already at the last lambda, which should be 1.0, then this is the backward IDWS last window
+    # If we are already at the last lambda, then this is the backward IDWS last window
     # and we won't actually enable IDWS for this window
-    if lambda1 == 1.0:
+    if args.lambda_index == len(config['lambda_schedule']) - 1:
         lambda2 = config['lambda_schedule'][-2]
     else:
         lambda2 = config['lambda_schedule'][args.lambda_index+1]
    
     # No IDWS for the first window since there isn't any previous window
     # And none for the very last window since that's the backwards last window
-    if args.lambda_index > 0 and lambda1 != 1.0:
-        lambda_idws = config['lambda_schedule'][args.lambda_index-1]
-    else:
-        lambda_idws = None
+    lambda_idws = config['lambda_schedule'][args.lambda_index-1] if lambda1 not in (0.0, 1.0) else None
         
     print(f'Lambdas are {lambda1} {lambda2} {lambda_idws}', file=sys.stderr)
         
