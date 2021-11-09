@@ -21,6 +21,8 @@ if __name__ == '__main__':
         help='Only print residues with this percent occupancy or greater (out of 100)')
     ap.add_argument('-n', '--num-frames', type=int,
         help='Limit the number of frames processed (beginning at the first frame)')
+    ap.add_argument('-s', '--atomselect', action='store_true', default=False,
+                    help='ligand_resname argument is actually an MDAnalysis atomselect string')
     ap.add_argument('-g', '--group-across-chains', action='store_true', default=False,
                     help='Group counts across chains (useful when the protein is multiple identical monomers)')
     ap.add_argument('--colorize-pdb-filename', help='Filename for output suitable for colorize_pdb.py (percent occupancy cutoff ignored)')
@@ -32,11 +34,12 @@ if __name__ == '__main__':
     u = mda.Universe(args.psf, args.dcd)
     u.atoms.wrap(compound='fragments', inplace=True)
     protein_ca = u.select_atoms('protein and name CA')
-    ligand = u.select_atoms('resname %s' % args.ligand_resname)
+    ligand = u.select_atoms(f'resname {args.ligand_resname}' if args.atomselect is False else args.ligand_resname)
 
     num_residues = len(protein_ca)
     first_resid = protein_ca.residues[0].resid
     num_frames = args.num_frames or len(u.trajectory)
+    print(f'Atoms in ligand: {len(ligand)}', file=sys.stderr)
     print('Trajectory files: %s' % ', '.join(args.dcd), file=sys.stderr)
     print('Residues: %d' % num_residues, file=sys.stderr)
     print('First resid: %d' % first_resid, file=sys.stderr)
