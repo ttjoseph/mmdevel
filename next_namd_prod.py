@@ -9,6 +9,15 @@ import os
 from sys import exit
 import argparse
 
+def _filename_sort_key(s):
+    """Key for natural-sorting filenames, ignoring the path.
+
+    This means that unlike with the standard Python sorted() function, "foo9" < "foo10".
+    """
+
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', os.path.basename(s))]
+
+
 ap = argparse.ArgumentParser(description='Create and print the "next" NAMD production simulation')
 ap.add_argument('--prefix', default='prod', help='Prefix to NAMD files: e.g. "prod"')
 ap.add_argument('--default-inputname', '-i', help='Input .restart.coor file to use if no "prod" restart files available')
@@ -40,6 +49,7 @@ if len(files) == 0:
 
 if len(files) == 0:
     exit(f'Unable to find any NAMD restart files. I looked for {args.prefix}*.restart.coor and {inputnames_to_glob}')
+files = sorted(files, key=_filename_sort_key)
 last_restart_filename = files[-1]
 last_index = 0
 
