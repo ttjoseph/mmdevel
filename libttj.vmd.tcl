@@ -342,13 +342,14 @@ proc generate_struct_align_ref {to_align_molid ref_molid} {
     animate goto start
     [atomselect $ref_molid protein] writepdb ref_prot.tmp.pdb
     [atomselect $to_align_molid protein] writepdb to_align_prot.tmp.pdb
-    set f [open "align.tmp.cmd" "w"]
-    puts $f "mmaker #0 #1"
-    puts $f "write relative #0 #1 align_molid${to_align_molid}_to_me.pdb"
+    set f [open "align.tmp.cxc" "w"]
+    puts $f "mmaker #2 to #1"
+    puts $f "save align_molid${to_align_molid}_to_me.pdb format pdb relModel #1 models #2"
+    puts $f "quit"
     close $f
-    exec chimera --nogui --silent ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cmd
+    exec chimerax --nogui --silent ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cxc
     mol new "align_molid${to_align_molid}_to_me.pdb"
-    file delete ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cmd
+    file delete ref_prot.tmp.pdb to_align_prot.tmp.pdb align.tmp.cxc
     file delete "align_molid${to_align_molid}_to_me.pdb"
     puts "Generated and loaded a proxy reference structure for molid ${to_align_molid}."
 }
