@@ -646,3 +646,18 @@ proc guess_corresponding_residues {molid segid ref_molid {distance_cutoff 5}} {
     }
     $mol_ca_sel delete
 }
+
+# Moves atoms specified by seltext2 onto seltext1 such that the geometric centers of 
+# (overlapseltext & seltext1) and (overlapseltext & seltext2) overlap.
+# For example, this could be used to superimpose two phospholipids to get their
+# head groups in a reasonable starting configuration.
+proc move_by_center {seltext1 seltext2 overlapseltext} {
+    set overlap_a [atomselect top "($seltext1) and ($overlapseltext)"]
+    set overlap_b [atomselect top "($seltext2) and ($overlapseltext)"]
+    set diff [vecsub [measure center $overlap_a] [measure center $overlap_b]]
+    set sel2 [atomselect top "$seltext2"]
+    $sel2 moveby $diff
+    $sel2 delete
+    $overlap_b delete
+    $overlap_a delete
+}
