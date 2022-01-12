@@ -73,6 +73,8 @@ def validate_fepouts(fileslist):
     if len(missing_range) > 0:
         print('validate_fepouts: Error: You are missing some lambdas:', file=sys.stderr)
         print('\n'.join([f"    {x.begin} to {x.end}" for x in sorted(missing_range)]), file=sys.stderr)
+        missing_total = sum([x.end - x.begin for x in missing_range])
+        print(f'The calculation appears to be roughly {100*(1 - missing_total):.0f}% done.', file=sys.stderr)
         return None
 
     files_to_print = [x.data for x in sorted(lambda_coverage)]
