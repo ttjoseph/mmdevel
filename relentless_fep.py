@@ -239,6 +239,11 @@ We assume that you have a config_myfep.namd file that will be included in the ge
         if steps_here < config['restart_frequency']:
             print(f"Warning: {fepout_fname} contains only {steps_here} steps, which is less than the restart frequency of {config['restart_frequency']}.",
                 file=sys.stderr)
+        # Handle the case where the previous fepout file is empty entirely.
+        # This can happen with AWS spot instances that are extremely short lived.
+        # Fall through.
+        if steps_here == 0:
+            break
 
         this_lambda1, this_lambda2, this_lambda_idws = lambdas_for_fepout(fepout_fname)
         # We might not have any lambdas reported yet in the fepout if its job got killed really early,
@@ -252,6 +257,8 @@ We assume that you have a config_myfep.namd file that will be included in the ge
         if (lambda1, lambda2, lambda_idws) != (this_lambda1, this_lambda2, this_lambda_idws):
             print('Error: Different lambdas encountered within the same window among the config and existing fepout files.',
                 file=sys.stderr)
+            print(f'Previous lambda1, lambda2, lambda_idws = {lambda1}, {lambda2}, {lambda_idws}', file=sys.stderr)
+            print(f'This lambda1, lambda2, lambda_idws = {this_lambda1}, {this_lambda2}, {this_lambda_idws}', file=sys.stderr)
             exit(1)
         lambda1, lambda2, lambda_idws = this_lambda1, this_lambda2, this_lambda_idws
    
