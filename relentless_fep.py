@@ -66,6 +66,17 @@ def lambdas_for_fepout(fname):
         return lambda1, lambda2, lambda_idws
 
 
+# Returns True if specified fepout file contains "#Free energy change for lambda window" line.
+# We use this to ensure that the fepout file set for a given lambda value is actually considered
+# complete by a fepout parser.
+def fepout_contains_footer(fname):
+    with open(fname) as f:
+        for line in f:
+            if line.startswith('#Free energy change for lambda window'):
+                return True
+    return False
+
+
 # Converts a number to a series of letters in base 26, like MS Excel does to label columns
 # These are used for suffixes to generated namd config files rather than the numbers
 # themselves, because that would be confusing.
@@ -230,10 +241,17 @@ We assume that you have a config_myfep.namd file that will be included in the ge
     print(f'Lambdas are {lambda1} {lambda2} {lambda_idws}', file=sys.stderr)
         
     # How many steps in total have already been done for this window?
+    # Also, if we have run all the steps user asked for, check to see whether the
+    # final fepout file contains the footer. If it doesn't, generate a config file
+    # run NAMD one last time to generate the fepout.
     total_steps_here = 0
+    footer_present = False
     fepout_files = glob(f"{config['prefix']}{args.lambda_index:03d}*.fepout")
     for fepout_fname in fepout_files:
         steps_here = num_steps_in_fepout(fepout_fname)
+        if fepout_contains_footer(fepout_fname):
+            footer_present = True
+
         print(f'Num steps spanned by {fepout_fname}: {steps_here}', file=sys.stderr)
         total_steps_here += steps_here
         if steps_here < config['restart_frequency']:
@@ -285,7 +303,12 @@ We assume that you have a config_myfep.namd file that will be included in the ge
     # Add a minimization step at the start of each group if user asked for it
     minimize_str = f"minimize {config['minimize']}" if is_first_window_in_group and config['minimize'] > 0 else ''
     
-    # If we need to 
+    # Perhaps we have enough steps but still need to generate a footer
+    if total_steps_needed <= 0 and footer_present is False:
+        print('There is no footer line in this set of fepouts, so we will run slightly longer.', file=sys.stderr)
+        total_steps_needed = 100
+
+    # If we need to run more steps, do it
     if total_steps_needed > 0:
         print(f'We need {total_steps_needed} more steps.', file=sys.stderr)
         # Ensure that the lambda1 specified in any existing fepouts is correct
