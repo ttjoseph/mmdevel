@@ -101,6 +101,10 @@ class ShadyPDB:
             # We do it here because we might have rolled over resindex in the if block just above.
             self.atoms[a_idx].resindex = last_resindex
 
+            # Also save this atom's index within the atoms array, so the caller has a single
+            # unambiguous way to identify it
+            self.atoms[a_idx].atomindex = a_idx
+
             this_residue_atomidx.append(a_idx)
             this_residue_atomnames.append(a_atomname)
         # We won't trigger these actions on the last atom (or even once, if there's only one atom) so we do them now
@@ -182,6 +186,188 @@ class ShadyPDB:
         
         for i in range(len(self.atoms)):
             self.atoms[i].x, self.atoms[i].y, self.atoms[i].z = coorvel.coords[i*3], coorvel.coords[i*3+1], coorvel.coords[i*3+2]
+
+
+class ShadyPSF(object):
+    """Shady representation of a NAMD PSF file.
+    
+    Not necessarily CHARMM or X-PLOR variants, though those might work by accident.
+    """
+    # Atom tuple indexes, so we don't need to resort to magic numbers
+    ATOMID = 0
+    SEGID = 1
+    RESID = 2
+    RESNAME = 3
+    ATOMNAME = 4
+    ATOMTYPE = 5
+    CHARGE = 6
+    WEIGHT = 7
+
+    def __init__(self, filename):
+        self.atoms = []
+        self.load_from_psf(filename)
+
+    def load_from_psf(self, filename):
+        psf = open(filename, 'r')
+
+        # Eat header
+        l = psf.readline()
+        if l[0:3] != "PSF":
+            print("%s doesn't look like a PSF file to me." % sys.argv[1], file=sys.stderr)
+            sys.exit(1)
+        
+        # Parse each block
+        while True:
+            records, kind = self.parse_block(psf)
+            if kind is None:
+                break
+            elif kind.startswith('!NTITL'):
+                pass
+            elif kind.startswith('!NATOM'):
+                self.atoms = []
+                for record in records:
+                    atomid = record[ShadyPSF.ATOMID]
+                    segid = record[ShadyPSF.SEGID]
+                    resid = record[ShadyPSF.RESID]
+                    resname = record[ShadyPSF.RESNAME]
+                    atomname = record[ShadyPSF.ATOMNAME]
+                    atomtype = record[ShadyPSF.ATOMTYPE]
+                    charge = float(record[ShadyPSF.CHARGE])
+                    weight = float(record[ShadyPSF.WEIGHT])
+                    self.atoms.append(record)
+            elif kind.startswith('!NBOND'):
+                self.bonds = ShadyPSF.separate_into_tuples(records, 2)
+            elif kind.startswith('!NTHET'):
+                self.angles = ShadyPSF.separate_into_tuples(records, 3)
+            elif kind.startswith('!NPHI'):
+                self.dihedrals = ShadyPSF.separate_into_tuples(records, 4)
+            elif kind.startswith('!NIMPHI'):
+                self.impropers = ShadyPSF.separate_into_tuples(records, 4)
+            elif kind.startswith('!NCRTERM'):
+                self.crossterms = ShadyPSF.separate_into_tuples(records, 8)
+            elif kind.startswith('!NDON'):
+                self.donors = ShadyPSF.separate_into_tuples(records, 2)
+            elif kind.startswith('!NACC'):
+                self.acceptors = ShadyPSF.separate_into_tuples(records, 2)
+            elif kind.startswith('!NNB'):
+                # It's not really one thing per tuple, but this will allow us to
+                # spit it back out properly
+                self.exclusions = ShadyPSF.separate_into_tuples(records, 1)
+            else:
+                print(f'ShadyPSF: Unknown PSF block kind {kind}, so I am discarding it. You should look into this.',
+                    file=sys.stderr)
+
+            # print(f'ShadyPSF: {filename}: {kind} block has {len(records)} records.', file=sys.stderr)
+
+    @classmethod
+    def separate_into_tuples(cls, records, tuple_size):
+        raw_data = []
+        for record in records:
+            raw_data.extend([int(s) for s in record])
+        if len(raw_data) % tuple_size != 0:
+            print(f'ShadyPSF: Error: Number of entries {len(raw_data)} is not a multiple of {tuple_size}, but it should be.',
+                file=sys.stderr)
+            sys.exit(1)
+        
+        data = []
+        for i in range(0, len(raw_data), 3):
+            data.append(tuple(raw_data[i:i+tuple_size]))
+        return data
+
+    def parse_block(self, f):
+        """Parse a PSF block from an open file handle.
+        
+        Returns a list of lists of tokens. It's up to the caller to parse further than that.
+        """
+        num_things, kind = ShadyPSF.get_psf_block_header(f)
+        if kind is None:
+            return [], None
+
+        records = []
+        # We don't know how many lines there are a priori
+        # If an ATOM or TITLE block, it's one record per line
+        # If any of the other kinds of block, it's a variable number of records per line
+        if kind.startswith(('!NATOM', '!NTITL')):
+            for _ in range(num_things):
+                line = f.readline()
+                records.append(line.strip().split())
+        else:
+            num_things_left = num_things
+            # The number of things is not the number of tokens
+            # e.g. One angle is actually three tokens
+            if kind.startswith('!NBOND'):
+                num_things_left *= 2
+            elif kind.startswith('!NTHET'):
+                num_things_left *= 3
+            elif kind.startswith(('!NPHI', '!NIMPHI')):
+                num_things_left *= 4
+            elif kind.startswith('!NCRTERM'):
+                num_things_left *= 8
+            elif kind.startswith('!NNB'):
+                # Exclusions list
+                # Number of tokens is num_things_left + number of atoms
+                if len(self.atoms) == 0:
+                    print(f'ShadyPSF: Trying to parse NNB (exclusions) block but have not parsed atoms yet.',
+                        file=sys.stderr)
+                    print(f'ShadyPSF: This means the PSF file is probably corrupt.', file=sys.stderr)
+                    sys.exit(1)
+                num_things_left += len(self.atoms)
+            while num_things_left > 0:
+                line = f.readline()
+                tokens = line.strip().split()
+                num_things_left -= len(tokens)
+                records.append(tokens)
+
+        return records, kind
+
+    @classmethod
+    def get_psf_block_header(cls, f):
+        """Parse PSF block header which is formatted as I8 <string>.
+        
+        This is not an instance method because it doesn't need to be.
+        """
+        # Eat blank lines or nonsense data until we get to a block header, and give up on EOF
+        while True:
+            l = f.readline()
+            # Give up at EOF
+            if l == '':
+                break
+            tokens = l.strip().split()
+            if len(tokens) >= 2 and tokens[1][0] == '!':
+                num, kind = int(tokens[0]), tokens[1].strip(':')
+                print("ShadyPSF: Encountered %s block with %d records" % (kind, num), file=sys.stderr)
+                return num, kind
+        return 0, None
+
+    @classmethod
+    def read_int_block(cls, f, num_records, max_records_per_line):
+        """Reads a block of integers from a PSF file.
+        Assumes the file pointer is at the start of it.
+        
+        This is not an instance method because it doesn't need to be.
+        """
+        data = []
+        for index in range(num_records/max_records_per_line):
+            l = f.readline()
+            data.extend(ShadyPSF.parse_ints(l))
+
+        if num_records % max_records_per_line != 0:
+            l = f.readline()
+            data.extend(ShadyPSF.parse_ints(l))
+        
+        return data
+
+    @classmethod
+    def parse_ints(cls, l):
+        """Returns array of ints extracted from a single string. Each int should be
+        8 characters, starting from first character in string."""
+        
+        num = len(l) - (len(l)%8)
+        ret = []
+        for i in range(0, num, 8):
+            ret.append(int(l[i:i+8].strip()))
+        return ret
+
 
 
 class CoorVel(object):
