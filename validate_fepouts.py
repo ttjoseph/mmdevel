@@ -5,7 +5,7 @@ import argparse
 import sys
 from os.path import isfile
 from intervaltree import Interval, IntervalTree
-
+from tqdm import tqdm
 
 def get_fepout_lambda_range(filename):
     # If the file doesn't exist or isn't actually a file, it can't have a lambda
@@ -42,13 +42,13 @@ def validate_fepouts(fileslist):
     
     lambda_coverage = IntervalTree()
     last_idws_fname, last_idws_window = None, None
-    for fname in sorted(list(set(fileslist))):
+    for fname in tqdm(sorted(list(set(fileslist))), unit=' files'):
         if isfile(fname) is False:
             print(f'{fname} is not a file that is here', file=sys.stderr)
             continue
         windows = get_fepout_lambda_range(fname)
         if windows == []:
-            print(f'{fname} is not a well formed fepout file', file=sys.stderr)
+            # print(f'{fname} is not a well formed fepout file', file=sys.stderr)
             continue
         for lambdas in windows:
             if lambdas[0] == 1.0 and lambdas[1] < lambdas[0]:
