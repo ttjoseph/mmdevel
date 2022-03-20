@@ -54,13 +54,17 @@ def main():
             # Now we need to locate this same atom in the target PSF.
             # We must assume the PDB and PSF have the same atoms in the same order.
             psf.atoms[target_atom.atomindex][ShadyPSF.RESID] = template_atom.resid
+            pdb.atoms[target_atom.atomindex].resid = template_atom.resid
 
         else:
             num_atoms_not_found += 1
 
     print(f'Info: {num_atoms_not_found} atoms in template not found in target PDB', file=sys.stderr)
     # TODO: Write out newly modified PSF and PDB
-
+    # For ShadyPDB, this is simply a matter of calling write_to_pdb()
+    print(f'DEBUG: Writing to foo.psf and foo.pdb', file=sys.stderr)
+    psf.write_to_psf('foo.psf')
+    pdb.write_to_pdb('foo.pdb')
 
 
 if __name__ == "__main__":

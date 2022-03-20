@@ -43,7 +43,7 @@ class AtomRecord:
         """Writes this atom to an ATOM record to an open file."""
         line = f'ATOM  {self.atomid:>5s} {self.atomname:<4s} {self.resname:4s}{self.chain:1s}{self.resid:>4s}    {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}{self.occupancy:6.3f}{self.tempfactor:6.3f}      {self.segid:4s}\n'
         # write() expects bytes, not a string, so we need to specify the encoding
-        f.write(line.encode('utf-8'))
+        f.write(line)
 
 class ShadyPDB:
     """Shady representation of a Protein Data Bank (PDB) file that might not conform to the standard.
@@ -135,7 +135,7 @@ class ShadyPDB:
 
     def write_to_pdb(self, file, atomindexes=None, flush=True):
         we_opened_file = False
-        if type(file) == 'str':
+        if isinstance(file, str):
             f = open(file, 'w')
             we_opened_file = True
         else:
@@ -205,6 +205,14 @@ class ShadyPSF(object):
 
     def __init__(self, filename):
         self.atoms = []
+        self.bonds = []
+        self.angles = []
+        self.dihedrals = []
+        self.impropers = []
+        self.crossterms = None
+        self.donors = None
+        self.acceptors = None
+        self.exclusions = None
         self.load_from_psf(filename)
 
     def load_from_psf(self, filename):
@@ -215,6 +223,11 @@ class ShadyPSF(object):
         if l[0:3] != "PSF":
             print("%s doesn't look like a PSF file to me." % sys.argv[1], file=sys.stderr)
             sys.exit(1)
+
+        # EXTended PSF format modifies the NATOM line format to widen some fields
+        self.is_extended_format = 'EXT' in l
+        self.has_cheq_data = 'CHEQ' in l
+        self.has_cmap_data = 'CMAP' in l
         
         # Parse each block
         while True:
@@ -259,18 +272,93 @@ class ShadyPSF(object):
 
             # print(f'ShadyPSF: {filename}: {kind} block has {len(records)} records.', file=sys.stderr)
 
+    def write_to_psf(self, file, flush=True):
+        we_opened_file = False
+        if isinstance(file, str):
+            f = open(file, 'w')
+            we_opened_file = True
+        else:
+            f = file
+
+        # We are just going to use EXTended format for the output PSF, to make things easier
+        f.write('PSF EXT')
+        if len(self.crossterms) > 0:
+            f.write(' CMAP')
+        # We also write X-PLOR format since the vanilla CHARMM format makes you use numeric indexes
+        # for atom types (!)
+        f.write(' XPLOR\n\n')
+        f.flush()
+        # TODO: Write NTITLE block
+        self.write_atoms_block(f)
+        self.write_int_block(f, '!NBOND', self.bonds, 8)
+        self.write_int_block(f, '!NTHETA', self.angles, 9)
+        self.write_int_block(f, '!NPHI', self.dihedrals, 8)
+        self.write_int_block(f, '!NIMPHI', self.impropers, 8)
+        self.write_int_block(f, '!NCRTERM', self.impropers, 8)
+        # TODO: Is the number of ints per line correct?
+        self.write_int_block(f, '!NDON', self.donors, 8)
+        self.write_int_block(f, '!NACC', self.acceptors, 8)
+        # We have to treat the exclusions block differently as it
+        # doesn't look like the other ones.
+        # self.write_exclusions_block(f, self.exclusions)
+
+
+        # Ensure everything is written before we return.
+        # Could be that the caller is invoking VMD or something, and we want to ensure all is written.
+        if flush is True:
+            f.flush()
+
+        if we_opened_file:
+            f.close()
+
+    def write_atoms_block(self, f):
+        """Writes a PSF atom block, in the EXTended XPLOR flavor."""
+        print(f'{len(self.atoms):8d} !NATOM', file=f)
+        for a in self.atoms:
+            atomid = a[ShadyPSF.ATOMID]
+            segid = a[ShadyPSF.SEGID]
+            resid = a[ShadyPSF.RESID]
+            resname = a[ShadyPSF.RESNAME]
+            atomname = a[ShadyPSF.ATOMNAME]
+            atomtype = a[ShadyPSF.ATOMTYPE]
+            charge = float(a[ShadyPSF.CHARGE])
+            weight = float(a[ShadyPSF.WEIGHT])
+
+            # We are using the EXT, non-CHEQ atom format
+            # (I10,1X,A8,1X,A8,1X,A8,1X,A8,1X,A4,1X,2G14.6,I8,2G14.6)
+            print(f'{atomid:>10s} {segid:8s} {resid:8s} {resname:8s} {atomname:8s} {atomtype:4s} {charge:14.6f}{weight:14.6f}{0:d}',
+                file=f)
+        print('', file=f)
+
+    def write_int_block(self, f, kind, data, ints_per_line):
+        print(f'{len(data):8d} {kind}', file=f)
+        print(f'Info: write_int_block: Writing {kind} block with {len(data)} records', file=sys.stderr)
+        self.write_int_data(f, data, ints_per_line)
+        print('', file=f)
+
+    def write_int_data(self, f, data, ints_per_line):
+        # The data is actually a list of lists that we ought to flatten
+        flat_data = [item for sublist in data for item in sublist]
+        print(f'Info: write_int_data: writing {len(flat_data)} ints', file=sys.stderr)
+        for b in range(0, len(flat_data), ints_per_line):
+            # How many ints shall we print?
+            # Either ints_per_line, or the remainder if there are fewer than that left
+            e = b + ints_per_line
+            if e > len(flat_data):
+                e = len(flat_data)
+            # PSF EXT format means ints are 10 characters wide
+            print(''.join(f'{int(x):>10d}' for x in flat_data[b:e]), file=f)
+            
+
     @classmethod
-    def separate_into_tuples(cls, records, tuple_size):
-        raw_data = []
-        for record in records:
-            raw_data.extend([int(s) for s in record])
+    def separate_into_tuples(cls, raw_data, tuple_size):
         if len(raw_data) % tuple_size != 0:
             print(f'ShadyPSF: Error: Number of entries {len(raw_data)} is not a multiple of {tuple_size}, but it should be.',
                 file=sys.stderr)
             sys.exit(1)
         
         data = []
-        for i in range(0, len(raw_data), 3):
+        for i in range(0, len(raw_data), tuple_size):
             data.append(tuple(raw_data[i:i+tuple_size]))
         return data
 
@@ -316,8 +404,9 @@ class ShadyPSF(object):
                 line = f.readline()
                 tokens = line.strip().split()
                 num_things_left -= len(tokens)
-                records.append(tokens)
+                records.extend(tokens)
 
+        # print(f'Parsed {len(records)} things for the {kind} block', file=sys.stderr)
         return records, kind
 
     @classmethod
