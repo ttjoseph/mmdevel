@@ -52,7 +52,7 @@ def main():
             out_segid = segid
             # We have to say delete=False here because the temporary file's variable may be GCed before we invoke VMD below,
             # which will cause the file to be deleted
-            tmp = tempfile.NamedTemporaryFile(prefix=f'{out_segid}_', suffix='.pdb', delete=False)
+            tmp = tempfile.NamedTemporaryFile(prefix=f'{out_segid}_', suffix='.pdb', mode='wt', delete=False)
             # Replacement for seg.atoms.write(tmp.name)
             chunk_atomindexes = []
             for resindex in resindexes:
@@ -81,7 +81,7 @@ def main():
             # print(f"{seg.segid} (chunk #{chunk_i}) -> {out_segid}: residue offset = {offset}, length = {length}", file=sys.stderr)
             print(f"offset: {offset}; length: {length}; len(resindexes): {len(resindexes)}",
                 file=sys.stderr)
-            tmp = tempfile.NamedTemporaryFile(prefix=f'{out_segid}_', suffix='.pdb', delete=False)
+            tmp = tempfile.NamedTemporaryFile(prefix=f'{out_segid}_', suffix='.pdb', mode='wt', delete=False)
 
             # Get all the atom indexes for this chunk then process them
             # seg.residues[offset:offset+length].atoms.write(tmp.name)

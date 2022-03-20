@@ -50,6 +50,10 @@ def main():
                     file=sys.stderr)
                 sys.exit(1)
 
+            # Don't renumber water
+            if target_atom.resname in ['TIP3', 'TIP4', 'WAT', 'HOH']:
+                continue
+
             # print(f'{target_atom.resname} {psf_target_atom[ShadyPSF.RESNAME]} {target_atom.resid} -> {template_atom.resname} {template_atom.resid}')
             # Now we need to locate this same atom in the target PSF.
             # We must assume the PDB and PSF have the same atoms in the same order.
