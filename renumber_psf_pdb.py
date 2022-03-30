@@ -15,6 +15,7 @@ def main():
     ap.add_argument('psf', help='PSF file to renumber')
     ap.add_argument('pdb', help='PDB file to renumber')
     ap.add_argument('pdb_template', help='Template PDB')
+    ap.add_argument('out_prefix', help='Prefix for output filenames')
     args = ap.parse_args()
 
     psf = ShadyPSF(args.psf)
@@ -63,12 +64,12 @@ def main():
         else:
             num_atoms_not_found += 1
 
-    print(f'Info: {num_atoms_not_found} atoms in template not found in target PDB', file=sys.stderr)
-    # TODO: Write out newly modified PSF and PDB
+    print(f'Info: {num_atoms_not_found} atoms in template not found in target PDB. It is good for this number to be zero.', file=sys.stderr)
+    # Write out newly modified PSF and PDB
     # For ShadyPDB, this is simply a matter of calling write_to_pdb()
-    print(f'DEBUG: Writing to foo.psf and foo.pdb', file=sys.stderr)
-    psf.write_to_psf('foo.psf')
-    pdb.write_to_pdb('foo.pdb')
+    print(f'Info: Writing to {args.out_prefix}.psf and {args.out_prefix}.pdb', file=sys.stderr)
+    psf.write_to_psf(f'{args.out_prefix}.psf')
+    pdb.write_to_pdb(f'{args.out_prefix}.pdb')
 
 
 if __name__ == "__main__":
