@@ -216,64 +216,63 @@ class ShadyPSF(object):
         self.load_from_psf(filename)
 
     def load_from_psf(self, filename):
-        psf = open(filename, 'r')
+        with open(filename, 'r') as psf:
+            # Eat header
+            l = psf.readline()
+            if l[0:3] != "PSF":
+                print("%s doesn't look like a PSF file to me." % sys.argv[1], file=sys.stderr)
+                sys.exit(1)
 
-        # Eat header
-        l = psf.readline()
-        if l[0:3] != "PSF":
-            print("%s doesn't look like a PSF file to me." % sys.argv[1], file=sys.stderr)
-            sys.exit(1)
+            # EXTended PSF format modifies the NATOM line format to widen some fields
+            self.is_extended_format = 'EXT' in l
+            self.has_cheq_data = 'CHEQ' in l
+            self.has_cmap_data = 'CMAP' in l
+            
+            # Parse each block
+            while True:
+                kind, records = self.parse_block(psf)
+                if kind is None:
+                    break
+                if kind.startswith('NTITL'):
+                    pass
+                elif kind.startswith('NATOM'):
+                    self.atoms = []
+                    for record in records:
+                        atomid = record[ShadyPSF.ATOMID]
+                        segid = record[ShadyPSF.SEGID]
+                        resid = record[ShadyPSF.RESID]
+                        resname = record[ShadyPSF.RESNAME]
+                        atomname = record[ShadyPSF.ATOMNAME]
+                        atomtype = record[ShadyPSF.ATOMTYPE]
+                        charge = float(record[ShadyPSF.CHARGE])
+                        weight = float(record[ShadyPSF.WEIGHT])
+                        self.atoms.append(record)
+                elif kind.startswith('NBOND'):
+                    self.bonds = ShadyPSF.separate_into_tuples(records, 2)
+                elif kind.startswith('NTHET'):
+                    self.angles = ShadyPSF.separate_into_tuples(records, 3)
+                elif kind.startswith('NPHI'):
+                    self.dihedrals = ShadyPSF.separate_into_tuples(records, 4)
+                elif kind.startswith('NIMPHI'):
+                    self.impropers = ShadyPSF.separate_into_tuples(records, 4)
+                elif kind.startswith('NCRTERM'):
+                    self.crossterms = ShadyPSF.separate_into_tuples(records, 8)
+                elif kind.startswith('NDON'):
+                    self.donors = ShadyPSF.separate_into_tuples(records, 2)
+                elif kind.startswith('NACC'):
+                    self.acceptors = ShadyPSF.separate_into_tuples(records, 2)
+                elif kind.startswith('NNB'):
+                    # It's not really one thing per tuple, but this will allow us to
+                    # spit it back out properly
+                    self.exclusions = ShadyPSF.separate_into_tuples(records, 1)
+                elif kind.startswith('NGRP'):
+                    # Groups, which I guess are 3 ints each?
+                    self.groups = ShadyPSF.separate_into_tuples(records, 3)
+                else:
+                    print(f'ShadyPSF: Unknown PSF block kind {kind}, so I am discarding it. You should look into this.',
+                        file=sys.stderr)
 
-        # EXTended PSF format modifies the NATOM line format to widen some fields
-        self.is_extended_format = 'EXT' in l
-        self.has_cheq_data = 'CHEQ' in l
-        self.has_cmap_data = 'CMAP' in l
-        
-        # Parse each block
-        while True:
-            kind, records = self.parse_block(psf)
-            if kind is None:
-                break
-            if kind.startswith('NTITL'):
-                pass
-            elif kind.startswith('NATOM'):
-                self.atoms = []
-                for record in records:
-                    atomid = record[ShadyPSF.ATOMID]
-                    segid = record[ShadyPSF.SEGID]
-                    resid = record[ShadyPSF.RESID]
-                    resname = record[ShadyPSF.RESNAME]
-                    atomname = record[ShadyPSF.ATOMNAME]
-                    atomtype = record[ShadyPSF.ATOMTYPE]
-                    charge = float(record[ShadyPSF.CHARGE])
-                    weight = float(record[ShadyPSF.WEIGHT])
-                    self.atoms.append(record)
-            elif kind.startswith('NBOND'):
-                self.bonds = ShadyPSF.separate_into_tuples(records, 2)
-            elif kind.startswith('NTHET'):
-                self.angles = ShadyPSF.separate_into_tuples(records, 3)
-            elif kind.startswith('NPHI'):
-                self.dihedrals = ShadyPSF.separate_into_tuples(records, 4)
-            elif kind.startswith('NIMPHI'):
-                self.impropers = ShadyPSF.separate_into_tuples(records, 4)
-            elif kind.startswith('NCRTERM'):
-                self.crossterms = ShadyPSF.separate_into_tuples(records, 8)
-            elif kind.startswith('NDON'):
-                self.donors = ShadyPSF.separate_into_tuples(records, 2)
-            elif kind.startswith('NACC'):
-                self.acceptors = ShadyPSF.separate_into_tuples(records, 2)
-            elif kind.startswith('NNB'):
-                # It's not really one thing per tuple, but this will allow us to
-                # spit it back out properly
-                self.exclusions = ShadyPSF.separate_into_tuples(records, 1)
-            elif kind.startswith('NGRP'):
-                # Groups, which I guess are 3 ints each?
-                self.groups = ShadyPSF.separate_into_tuples(records, 3)
-            else:
-                print(f'ShadyPSF: Unknown PSF block kind {kind}, so I am discarding it. You should look into this.',
-                    file=sys.stderr)
-
-            # print(f'ShadyPSF: {filename}: {kind} block has {len(records)} records.', file=sys.stderr)
+                # print(f'ShadyPSF: {filename}: {kind} block has {len(records)} records.', file=sys.stderr)
 
     def write_to_psf(self, file, flush=True):
         we_opened_file = False
@@ -341,7 +340,7 @@ class ShadyPSF(object):
         # The exclusions block is a list of exclusions, one int each, plus a list of ints, one for each atom, apparently
         num_exclusions = len(self.exclusions) - len(self.atoms)
         print(f'{num_exclusions:8d} !NNB', file=f)
-        print(f'Info: Writing {num_exclusions} exclusions', file=sys.stderr)
+        # print(f'Info: Writing {num_exclusions} exclusions', file=sys.stderr)
         self.write_int_data(f, self.exclusions[0:num_exclusions], ints_per_line)
         print('', file=f)
         self.write_int_data(f, self.exclusions[num_exclusions:], ints_per_line)
@@ -349,14 +348,14 @@ class ShadyPSF(object):
 
     def write_int_block(self, f, kind, data, ints_per_line):
         print(f'{len(data):8d} {kind}', file=f)
-        print(f'Info: write_int_block: Writing {kind} block with {len(data)} records', file=sys.stderr)
+        # print(f'Info: write_int_block: Writing {kind} block with {len(data)} records', file=sys.stderr)
         self.write_int_data(f, data, ints_per_line)
         print('', file=f)
 
     def write_int_data(self, f, data, ints_per_line):
         # The data is actually a list of lists that we ought to flatten
         flat_data = [item for sublist in data for item in sublist]
-        print(f'Info: write_int_data: writing {len(flat_data)} ints', file=sys.stderr)
+        # print(f'Info: write_int_data: writing {len(flat_data)} ints', file=sys.stderr)
         for b in range(0, len(flat_data), ints_per_line):
             # How many ints shall we print?
             # Either ints_per_line, or the remainder if there are fewer than that left
@@ -365,7 +364,7 @@ class ShadyPSF(object):
                 e = len(flat_data)
             # PSF EXT format means ints are 10 characters wide
             print(''.join(f'{int(x):>10d}' for x in flat_data[b:e]), file=f)
-            
+
 
     @classmethod
     def separate_into_tuples(cls, raw_data, tuple_size):
@@ -431,7 +430,7 @@ class ShadyPSF(object):
                 num_things_left -= len(tokens)
                 records.extend(tokens)
 
-        print(f'Parsed {len(records)} things for the {kind} block', file=sys.stderr)
+        # print(f'Parsed {len(records)} things for the {kind} block', file=sys.stderr)
         return kind, records
 
     @classmethod
@@ -577,6 +576,54 @@ def pbc_charge_correction(ion_charge, ion_radius, box_length, dielectric=80, ver
     correction = term1 + term2
     correction *= KCAL_MOL_PER_HARTREE
     return correction
+
+
+def renumber_psf_pdb(psf_in, pdb_in, pdb_template):
+    """Given a ShadyPSF and matching ShadyPDB, renumbers the protein residues according to a
+    template ShadyPDB, in-place I think. Returns modified ShadyPSF and ShadyPDB.
+    """
+    # First, determine correspondence between pdb and pdb_template by coordinates, out to perhaps two decimal
+    # places? If two atoms differ only by 0.009 Angstroms there is likely something wrong
+    def coord_key(a):
+        return f'{a.x:.2f} {a.y:.2f} {a.z:.2f}'
+    
+    # Invert atom -> coord maps
+    coord_to_atom_pdb = {coord_key(a): a for a in pdb_in.atoms}
+    coord_to_atom_pdb_template = {coord_key(a): a for a in pdb_template.atoms}
+
+    if len(coord_to_atom_pdb) != len(pdb_in.atoms):
+        print(f"renumber_psf_pdb: Error: Only {len(coord_to_atom_pdb)} distinct coordinates in input PDB which means atoms overlap!",
+            file=sys.stderr)
+        raise ValueError
+    if len(coord_to_atom_pdb_template) != len(pdb_template.atoms):
+        print(f"renumber_psf_pdb: Error: Only {len(coord_to_atom_pdb_template)} distinct coordinates in template PDB, which means atoms overlap!",
+            file=sys.stderr)
+        raise ValueError
+
+    num_atoms_not_found = 0
+    for k, template_atom in coord_to_atom_pdb_template.items():
+        if k in coord_to_atom_pdb:
+            target_atom = coord_to_atom_pdb[k]
+            psf_target_atom = psf_in.atoms[target_atom.atomindex]
+            if psf_target_atom[ShadyPSF.RESNAME] != target_atom.resname or \
+                psf_target_atom[ShadyPSF.RESID] != target_atom.resid:
+                print(f'renumber_psf_pdb: Error: Target PSF and PDB do not appear to correspond to the same structure!',
+                    file=sys.stderr)
+                raise ValueError
+
+            # Don't renumber water
+            if target_atom.resname in ['TIP3', 'TIP4', 'WAT', 'HOH']:
+                continue
+
+            # print(f'{target_atom.resname} {psf_target_atom[ShadyPSF.RESNAME]} {target_atom.resid} -> {template_atom.resname} {template_atom.resid}')
+            # Now we need to locate this same atom in the target PSF.
+            # We must assume the PDB and PSF have the same atoms in the same order.
+            psf_in.atoms[target_atom.atomindex][ShadyPSF.RESID] = template_atom.resid
+            pdb_in.atoms[target_atom.atomindex].resid = template_atom.resid
+        else:
+            num_atoms_not_found += 1
+
+    return psf_in, pdb_in
 
 
 def parse_fepout(fnames, verbose=False):
