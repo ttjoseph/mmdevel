@@ -331,7 +331,7 @@ class ShadyPSF(object):
 
             # We are using the EXT, non-CHEQ atom format
             # (I10,1X,A8,1X,A8,1X,A8,1X,A8,1X,A4,1X,2G14.6,I8,2G14.6)
-            print(f'{atomid:>10s} {segid:8s} {resid:8s} {resname:8s} {atomname:8s} {atomtype:4s} {charge:14.6f}{weight:14.6f}{0:d}',
+            print(f'{atomid:>10s} {segid:8s} {resid:8s} {resname:8s} {atomname:8s} {atomtype:4s} {charge:14.6f}{weight:14.6f} {0:d}',
                 file=f)
         print('', file=f)
 
