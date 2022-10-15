@@ -441,6 +441,25 @@ proc rmsd_over_time_nofit { {mol top} {seltext "noh"} } {
     return $rmsd
 }
 
+# Zip together lists, a la Python
+# Note! You must pass the variable name barewords, *without* the '$'
+# https://stackoverflow.com/questions/32118416/how-to-zip-lists-in-tcl
+proc ziplists_csv args {
+    foreach l $args {
+        upvar 1 $l $l
+        lappend vars [incr n]
+        lappend foreach_args $n [set $l]
+    }
+    foreach {*}$foreach_args {
+        set elem [list]
+        foreach v $vars {
+            lappend elem [set $v]
+        }
+        lappend result [join $elem ","]
+    }
+    return $result
+}
+
 # Write a list to a single column CSV file
 # Although with only one column there are no commas
 proc write_to_csv {data headername filename} {
