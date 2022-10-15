@@ -22,6 +22,8 @@ def main():
     ap.add_argument('toppar_txt', help='File containing newline-separated list of psfgen-acceptable topology files')
     ap.add_argument('out_prefix', help='Prefix for output PSF and PDB files')
     ap.add_argument('--disulfide-bonds', help='Specify disulfide bonds. Ex: PROA:1-PROA:2,PROA:4-PROA:5')
+    ap.add_argument('--patch', help='Specify arbitrary single-residue patch. Ex: PROA:1=SP2,PROB:42=SP1')
+    ap.add_argument('--mutate', help='Specify residue mutations. Ex: PROA:1=FOO,PROB:42=BAR')
     ap.add_argument('--hmassrepart', action='store_true', help='Tell psfgen to do hydrogen mass repartitioning')
     ap.add_argument('--chunk-size', type=int, default=9999, help='Maximum number of residues in a segment that you think psfgen or whatever can handle')
     ap.add_argument('--show-psfgen-script', action='store_true', help='Show the psfgen script that will be passed to VMD')
@@ -58,7 +60,8 @@ def main():
             for resindex in resindexes:
                 chunk_atomindexes.extend(u.resindex_to_atomindex[resindex])
             print(f"Filename for segid #{seg_i} for {segid} ({len(chunk_atomindexes)} atoms) is {tmp.name}", file=sys.stderr)
-            u.renumber_subset(chunk_atomindexes)
+            # Preserve residue IDs so patch commands act as expected by user
+            u.renumber_subset(chunk_atomindexes, renumber_residues=False)
             u.write_to_pdb(tmp, chunk_atomindexes)
             segs_to_process.append((out_segid, tmp.name))
             seg_i += 1
@@ -111,9 +114,21 @@ def main():
 {toppar_cmds}
 """
     for segid, fname in segs_to_process:
+        # Grab segid-specific mutate commands
+        # Ex: PROA:3=ASP -> mutate 3 ASP
+        # But only if segd == PROA
+        mutate_str = ''
+        if args.mutate != None:
+            for mutation in args.mutate.split(','):
+                mutate_from, mutate_to = mutation.split('=')
+                mutate_segid, mutate_resid = mutate_from.split(':')
+                if segid == mutate_segid:
+                    mutate_str += f'mutate {mutate_resid} {mutate_to}\n'
+
         psfgen_script +=f"""
 segment {segid} {{
     pdb {fname}
+    {mutate_str}
 }}
 """
     # Add disulfide bonds
@@ -122,9 +137,19 @@ segment {segid} {{
             res1, res2 = disu.split('-')
             psfgen_script += f"patch DISU {res1} {res2}\n"
 
+    # Add any arbitrary single-residue patches
+    if args.patch is not None:
+        for patch_str in args.patch.split(','):
+            res, patch = patch_str.split('=')
+            psfgen_script += f"patch {patch} {res}\n"
+
     # Specify coordinates after the patches for disulfide bonds, according to psfgen user guide example
     for segid, fname in segs_to_process:
         psfgen_script += f"coordpdb {fname} {segid}\n"
+
+    if args.patch is not None or args.mutate is not None:
+        psfgen_script += "# Guess missing coordinates resulting from patches/mutations\nguesscoord\n"
+        psfgen_script += "# And we need to regenerate angle and dihedral parameters\nregenerate angles dihedrals"
 
     if args.hmassrepart:
         psfgen_script += "hmassrepart 1\n"
