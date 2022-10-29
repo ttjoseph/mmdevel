@@ -24,7 +24,7 @@ if your FEP calculation needs 120 windows, running all the windows in sequence w
 a long time. But if you can run 0-4, 5-9, 10-14, etc. simultaneously on your cluster, you
 can save a lot of wallclock time.
 
-Of course, if you want to run all the windows sequentially, you can just say that each
+Of course, if you want to run all 120 windows sequentially, you can just say that each
 group should have 121 or more windows. (That last window is the final IDWS window in the
 reverse direction.)
 
@@ -99,7 +99,8 @@ alchEquilSteps 500000
 run 1500000
 ```
 
-Your myfep.include.namd should include everything else NAMD needs to run your simulation.
+Your myfep.include.namd should include everything else NAMD needs to run your simulation. This
+would include whatever colvars parameters you need and so forth.
 
 Let's say you ran this simulation, but then you had a power outage after 400000 steps. All you
 now must do is re-run relentless_fep.py in exactly the same way as before:
@@ -161,9 +162,9 @@ done
 ```
 
 If a calcuation fails, you can just resubmit the script without any other changes. Often
-the batch queue system can be configured to do this automatically for you.
-
-
+the batch queue system can be configured to do this automatically for you. Before using
+this script, be sure to modify it for your particular cluster, in particular specifying
+now many CPUs to use (this script will only use 1!).
 """
 import argparse
 import sys
@@ -364,6 +365,7 @@ You must have a myfep.include.namd file that will be included in the generated N
     # Read the config .yaml file
     # Look at the .fepout file we've got so far and decide how much more calculation we need to do
     config_yaml = f'{args.prefix}.yaml'
+    config = {}
     config['prefix'] = args.prefix
     common_namd = f"{config['prefix']}.include.namd"
 
