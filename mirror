@@ -11,7 +11,7 @@ shift 2
 here=$PWD/
 homeslash=$HOME/
 # Also ignore the boxy-specific NAS path
-nasslash=/nas0/work/
+nasslash=/nas1/work/
 path_on_server=${here/$homeslash/}
 path_on_server=${path_on_server/$nasslash/}
         
