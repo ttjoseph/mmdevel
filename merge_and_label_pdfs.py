@@ -13,16 +13,16 @@ from reportlab.lib.units import inch
 
 
 def make_pdf_of_text(text, for_page):
-	text_buf = make_pdfbytes_of_text(text, for_page.mediaBox)
-	return PDF.PdfFileReader(text_buf).getPage(0)
+	text_buf = make_pdfbytes_of_text(text, for_page.mediabox)
+	return PDF.PdfReader(text_buf).pages[0]
 
 
 def make_pdfbytes_of_text(text, media_box):
 	buf = io.BytesIO()
 	c = canvas.Canvas(buf, pagesize=media_box)
 	# Put the text at the top center
-	c.drawCentredString((float(media_box.lowerRight[0]) - float(media_box.lowerLeft[0]))/2,
-		float(media_box.upperLeft[1]) - 12, text)
+	c.drawCentredString((float(media_box.lower_right[0]) - float(media_box.lower_left[0]))/2,
+		float(media_box.upper_left[1]) - 12, text)
 	c.save()
 	buf.seek(0)
 	return buf
@@ -35,21 +35,21 @@ def main():
 	ap.add_argument('pdfs', nargs='+', help='PDF files to concatenate, in order')
 	args = ap.parse_args()
 
-	output = PDF.PdfFileWriter()
+	output = PDF.PdfWriter()
 
 	out_page_num = 1
 	for fname in args.pdfs:
 		# We don't use a "with" block here because PyPDF4 needs each file to remain open until done writing output
 		f = open(fname, 'rb')
-		this_pdf = PDF.PdfFileReader(f)
-		this_num_pages = this_pdf.getNumPages()
+		this_pdf = PDF.PdfReader(f)
+		this_num_pages = len(this_pdf.pages)
 		print(f"Working on {fname} ({this_num_pages} pages)...", file=sys.stderr)
 		for page_i in range(this_num_pages):
-			page = this_pdf.getPage(page_i)
+			page = this_pdf.pages[page_i]
 
 			text_string = f"{fname.replace('_', ' ').replace('.pdf', '')} (p. {args.page_number_prefix}{out_page_num})"
-			page.mergePage(make_pdf_of_text(text_string, page))
-			output.addPage(page)
+			page.merge_page(make_pdf_of_text(text_string, page))
+			output.add_page(page)
 			out_page_num += 1
 
 	print(f"Writing output to {args.out}.", file=sys.stderr)
