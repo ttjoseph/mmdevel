@@ -559,6 +559,8 @@ proc generate_lipid_restraints {molid} {
         "POEA" {P N "C1.*" "O1.*"} \
         "POPE" {P N "C1.*" "O1.*"} \
         "POPA" {P C1 "O1.*"} \
+        "POPC" {P N C1 "O1.*"} \
+        "CHL1" {C3 O3} \
     ]
 
     puts "generate_lipid_restraints: Warning: I only know heads of:\n    [lsort [dict keys $head_atoms_by_lipid]]\nYou _must_ review the source because this proc is shady!"
