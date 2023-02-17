@@ -24,6 +24,7 @@ def main():
     ap.add_argument('--disulfide-bonds', help='Specify disulfide bonds. Ex: PROA:1-PROA:2,PROA:4-PROA:5')
     ap.add_argument('--patch', help='Specify arbitrary single-residue patch. Ex: PROA:1=SP2,PROB:42=SP1')
     ap.add_argument('--mutate', help='Specify residue mutations. Ex: PROA:1=FOO,PROB:42=BAR')
+    ap.add_argument('--snip-discontinuities', action='store_true', help='Remove bonds between residues in same segment that are not adjacent by resid')
     ap.add_argument('--hmassrepart', action='store_true', help='Tell psfgen to do hydrogen mass repartitioning')
     ap.add_argument('--chunk-size', type=int, default=9999, help='Maximum number of residues in a segment that you think psfgen or whatever can handle')
     ap.add_argument('--show-psfgen-script', action='store_true', help='Show the psfgen script that will be passed to VMD')
@@ -127,6 +128,8 @@ def main():
 
         psfgen_script +=f"""
 segment {segid} {{
+    first none
+    last none
     pdb {fname}
     {mutate_str}
 }}
@@ -216,7 +219,16 @@ writepdb {out_pdb_filename}
         psf.write_to_psf(out_psf_filename)
         print(f'Writing {out_pdb_filename}...', file=sys.stderr)
         pdb.write_to_pdb(out_pdb_filename)
-        print(f'All done. Enjoy!', file=sys.stderr)
+
+    # Support the dubious use case of discontinuous polypeptides in a single segment
+    # by snipping bonds between discontinuous residue IDs in a single segment
+    if args.snip_discontinuities == True:
+        psf = ShadyPSF(out_psf_filename)
+        psf.snip_discontinuities()
+        print(f'Writing discontinuity-snipped version of {out_psf_filename}...', file=sys.stderr)
+        psf.write_to_psf(out_psf_filename)
+
+    print(f'All done. Enjoy!', file=sys.stderr)
 
 if __name__ == "__main__":
     main()
