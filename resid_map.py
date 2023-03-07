@@ -2,6 +2,7 @@
 # -*- coding: utf8
 from io import StringIO
 import argparse
+import sys
 from Bio import AlignIO
 
 def annotate_numbers(seq):
@@ -16,7 +17,7 @@ def annotate_numbers(seq):
 	return ids
 
 
-def translate(seq_have, seq_want, query_id):
+def translate(seq_have, seq_want, query_id, noisy=True):
 	# Annotate each residue with its original resid, starting from 1
 	# Yeah, we do this every time. Sue me.
 	id_have = annotate_numbers(seq_have)
@@ -26,19 +27,22 @@ def translate(seq_have, seq_want, query_id):
 	# which should give us the equivalent residue in both sequences
 	array_idx = id_have.index(query_id)
 	if array_idx is None:
-		print('Cannot find that resid in sequence you have')
-		exit()
+		print('# Cannot find that resid in sequence you have', file=sys.stderr)
+		return None
 	if id_want[array_idx] is None:
-		print('Resid {} does not exist in the other sequence'.format(query_id + 1))
-		exit()
-	print('{}{} → {}{}'.format(seq_have[array_idx], id_have[array_idx] + 1, seq_want[array_idx], id_want[array_idx] + 1))
+		print('# Resid {} does not exist in the other sequence'.format(query_id + 1), file=sys.stderr)
+		return None
 
+	if noisy:
+		print('{}{} → {}{}'.format(seq_have[array_idx], id_have[array_idx] + 1, seq_want[array_idx], id_want[array_idx] + 1))
+	return seq_have[array_idx], id_have[array_idx] + 1, seq_want[array_idx], id_want[array_idx] + 1
 
 
 def main():
 	ap = argparse.ArgumentParser(description='Translate residue IDs according to alignment')
 	ap.add_argument('i_have', help='Sequence you have, a or b, defined by their order in the alignment')
 	ap.add_argument('resid', nargs='+', type=int, help='Residue ID you have')
+	ap.add_argument('--tcl', action='store_true', help='Generate Tcl code that you might use in a VMD script')
 	ap.add_argument('--alignment', help="CLUSTAL alignment output")
 	args = ap.parse_args()
 	seq_a, seq_b = '', ''
@@ -56,11 +60,20 @@ def main():
 	elif args.i_have == 'b':
 		seq_have, seq_want = aln[1], aln[0]
 	else:
-		print('Hey! Specify sequence a or b.')
+		print('Hey! Specify sequence a or b.', file=sys.stderr)
+		exit()
 
-	print('{} → {}:'.format(seq_have.id, seq_want.id))
+	print('# {} → {}:'.format(seq_have.id, seq_want.id))
+	if args.tcl:
+		print('array set a_to_b {}')
+		print('array set b_to_a {}')
+
 	for resid in args.resid:
-		translate(seq_have, seq_want, resid - 1)
+		result = translate(seq_have, seq_want, resid - 1, noisy=not args.tcl)
+		if args.tcl and result:
+			resname1, idx1, resname2, idx2 = result
+			print(f"""set a_to_b({idx1}) {idx2}""")
+			print(f"""set b_to_a({idx2}) {idx1}""")
 
 
 
