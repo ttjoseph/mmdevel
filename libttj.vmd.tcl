@@ -338,10 +338,10 @@ proc range {from to} {
 # trajectory against that structure.
 # This function automates what STAMP is used for here, but not using
 # STAMP. Instead we use UCSF Chimera MatchMaker.
-proc generate_struct_align_ref {to_align_molid ref_molid} {
+proc generate_struct_align_ref {to_align_molid ref_molid align_sel} {
     animate goto start
-    [atomselect $ref_molid protein] writepdb ref_prot.tmp.pdb
-    [atomselect $to_align_molid protein] writepdb to_align_prot.tmp.pdb
+    [atomselect $ref_molid $align_sel] writepdb ref_prot.tmp.pdb
+    [atomselect $to_align_molid $align_sel] writepdb to_align_prot.tmp.pdb
     set f [open "align.tmp.cxc" "w"]
     puts $f "mmaker #2 to #1"
     puts $f "save align_molid${to_align_molid}_to_me.pdb format pdb relModel #1 models #2"
@@ -389,7 +389,7 @@ proc align_trajectory {to_align_molid {ref_molid "same"} {align_sel "backbone"}}
     if {[sanitize_resname_list [$ref_sel get resname]] != [sanitize_resname_list [$to_align_sel get resname]]} {
         puts "But these are not the same protein because they have different resnames."
         puts "Therefore, generating a proxy reference structure by structural alignment using Chimera MatchMaker."
-        generate_struct_align_ref $to_align_molid $ref_molid
+        generate_struct_align_ref $to_align_molid $ref_molid $align_sel
         # No need for the old reference atomselect...we need to use the new one now
         $ref_sel delete
         set ref_sel [atomselect top $align_sel]
@@ -548,9 +548,24 @@ proc _do_4term_extrabonds_line {molid params_dict keyword {fd stdout}} {
     $all delete
 }
 
+proc generate_charmmgui_protein_restraints {molid} {
+    set all [atomselect $molid "all"]
+    set prot_1 [atomselect $molid "protein and name N CA C O"]
+    set prot_05 [atomselect $molid "protein and name CB CG CD NE CZ NH1 NH2"]
+    $all set beta 0.0
+    $prot_1 set beta 1.0
+    $prot_05 set beta 0.5
+    $all writepdb "prot_posres.ref"
+    # Clean up atomselect objects
+    $all delete
+    $prot_1 delete
+    $prot_05 delete
+}
+
+
 # Generates lipid restraints as used by the CHARMM-GUI lipid equilibration protocol.
 # Useful when you are, for example, doing AFEP on a lipid that CHARMM-GUI generated.
-proc generate_lipid_restraints {molid} {
+proc generate_charmmgui_lipid_restraints {molid} {
     # First we deal with the head atoms, and generate ${lipid}_head_{upper,lower}.ref files
     # that specify what atoms are to be restrained in the lipid heads.
 
@@ -589,11 +604,14 @@ proc generate_lipid_restraints {molid} {
     # This will be different according to lipid type, and are encoded in an inscrutable CHARMM script.
     # So I'm only including certain lipid types piecemeal.
     # First four are atom names, last is reference value
+    # TODO: POPC, which has some -120s in there
     set eb_DIHEDRAL [dict create \
         "POPE" "C28 C29 C210 C211 0.0" \
+        "POPC" "C28 C29 C210 C211 0.0" \
     ]
     set eb_IMPROPER [dict create \
         "POPE" "C3 C1 C2 O21 120.0" \
+        "POPC" "C1 C3 C2 O21 -120.0" \
     ]
 
     set fd [open "dihe.txt" "w"]
