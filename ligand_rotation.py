@@ -5,6 +5,7 @@
 import csv
 import sys
 import argparse
+import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis import align
 from MDAnalysis.analysis.rms import rmsd
@@ -24,13 +25,13 @@ def main():
     ref = ligand_u.positions - ligand_u.center_of_mass()
 
     writer = csv.writer(sys.stdout)
-    writer.writerow(['x', 'y', 'z'])
+    writer.writerow(['frame', 'x', 'y', 'z'])
 
     for ts in tqdm(u.trajectory, unit='frames'):
         mobile0 = ligand_u.positions - ligand_u.center_of_mass()
         rot_mat, rmsd = align.rotation_matrix(mobile0, ref)
-        rot = Rotation.from_matrix(rot_mat)
-        writer.writerow(rot.as_euler('XYZ', degrees=True))
+        out = Rotation.from_matrix(rot_mat).as_euler('XYZ', degrees=True)
+        writer.writerow(np.insert(out, 0, ts.frame))
 
 
 
