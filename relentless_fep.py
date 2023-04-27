@@ -56,7 +56,8 @@ per_window_equil_steps: 200000
 ```
 
 And a description of the parameters:
-  - "lambda_schedule" must span 0 to 1.0.
+  - "lambda_schedule" must span 0 to 1.0. Or, you can just write a single number if you want that
+    many evenly-spaced windows.
   - "start_config_prefix" identifies the simulation input to begin from with the first window in
     each group. Here this means mineq.coor, mineq.vel, mineq.xsc. You will specify the PSF file
     in the NAMD config myfep.include.namd.
@@ -274,7 +275,7 @@ def any_isfile(filenames):
 # Second part is a zero-padded 3-digit number
 # Third part one of 'a', 'b', ..., 'aa', 'ab', ...according to the base-26 column numbering scheme
 def generate_next_prefix(config, fnames):
-    middles = [x.replace(config['prefix'], '') for x in fnames]
+    middles = [x.replace(global_input_prefix, '') for x in fnames]
     middles = [x.replace('.fepout', '') for x in middles]
     # Remove first group of digits, then take all trailing lowercase letters
     nums, suffixes = set(), set()
@@ -301,7 +302,7 @@ def generate_next_prefix(config, fnames):
     # If there is already simulation output in the proposed filenames, then try another filename
     while any_isfile([f'{out_prefix}.fepout', f'{out_prefix}.restart.coor', f'{out_prefix}.restart.vel']):
         counter += 1
-        out_prefix = f"{config['prefix']}{highest_num_str}{to_base26(counter)}"
+        out_prefix = f"{global_input_prefix}{highest_num_str}{to_base26(counter)}"
     return out_prefix
         
 
@@ -320,13 +321,13 @@ def get_latest_restart_prefix(prefix):
 #   2. The newest restart file from the previous window (if this window does not start a group)
 #       - or -
 #      The start_config as specified in the config YAML
-def get_correct_restart_prefix(config, lambda_index):
+def get_correct_restart_prefix(config, global_input_prefix, lambda_index):
     # This isn't the first lambda window, but it could still be starting a group
     # First lambda is by definition first window in group
     # Get newest restart file from this window
-    this_prefix = get_latest_restart_prefix(f"{config['prefix']}{lambda_index:03d}")
+    this_prefix = get_latest_restart_prefix(f"{global_input_prefix}{lambda_index:03d}")
     start_config_prefix = get_latest_restart_prefix(f"{config['start_config_prefix']}")
-    last_window_prefix = get_latest_restart_prefix(f"{config['prefix']}{lambda_index - 1:03d}") if lambda_index > 0 else None
+    last_window_prefix = get_latest_restart_prefix(f"{global_input_prefix}{lambda_index - 1:03d}") if lambda_index > 0 else None
     is_first_window_in_group = lambda_index % config['windows_per_group'] == 0
     if this_prefix is not None:
         return this_prefix
@@ -340,6 +341,26 @@ def get_correct_restart_prefix(config, lambda_index):
                 file=sys.stderr)
             exit(1)
         return last_window_prefix      
+
+
+# Pure python linspace, so we don't have to make user install numpy
+# Taken from:
+# https://gist.github.com/pmav99/d124872c879f3e9fa51e
+def linspace(start, stop, num=50, endpoint=True):
+    num = int(num)
+    start = start * 1.
+    stop = stop * 1.
+
+    if num == 1:
+        yield stop
+        return
+    if endpoint:
+        step = (stop - start) / (num - 1)
+    else:
+        step = (stop - start) / num
+
+    for i in range(num):
+        yield start + step * i
 
 
 def main():
@@ -366,8 +387,8 @@ You must have a myfep.include.namd file that will be included in the generated N
     # Look at the .fepout file we've got so far and decide how much more calculation we need to do
     config_yaml = f'{args.prefix}.yaml'
     config = {}
-    config['prefix'] = args.prefix
-    common_namd = f"{config['prefix']}.include.namd"
+    global_input_prefix = args.prefix
+    common_namd = f"{global_input_prefix}.include.namd"
 
     # Ensure the config YAML and NAMD config files exist
     if os.path.exists(config_yaml) is False:
@@ -376,38 +397,45 @@ You must have a myfep.include.namd file that will be included in the generated N
         print(f'Error: NAMD configuration file {common_namd} not found.', file=sys.stderr)
 
     with open(config_yaml) as f:
-        config = safe_load(f)    
+        config = safe_load(f)
+
+    # Provide shorthand notation. If user wants 60 evenly-spaced windows,they can just write
+    # 60 instead of an explicit lambda schedule. If they don't want the windows evenly spaced,
+    # they will just have to create it themselves.
+    lambda_schedule = config['lambda_schedule']
+    if type(lambda_schedule) is int:
+        lambda_schedule = [round(x, 5) for x in linspace(0, 1., lambda_schedule+1)]
 
     # Do a bunch of sanity checks as it is easy for the user to screw up
-    if args.lambda_index < 0 or args.lambda_index >= len(config['lambda_schedule']):
-        print(f"Error: Lambda index {args.lambda_index} is out of range - {args.config_yaml} only has {len(config['lambda_schedule'])} lambdas",
+    if args.lambda_index < 0 or args.lambda_index >= len(lambda_schedule):
+        print(f"Error: Lambda index {args.lambda_index} is out of range - {args.config_yaml} only has {len(lambda_schedule)} lambdas",
               file=sys.stderr)
         exit(1)
 
-    endpoint_lambdas = config['lambda_schedule'][0], config['lambda_schedule'][-1]
+    endpoint_lambdas = lambda_schedule[0], lambda_schedule[-1]
     if endpoint_lambdas != (0.0, 1.0) and endpoint_lambdas != (1.0, 0.0):
         print(f"Error: Lambda schedule should begin and end with 0.0 and 1.0, or vice versa.", file=sys.stderr)
         print(f"       They are actually {endpoint_lambdas}. I am finicky like that.", file=sys.stderr)
         exit(1)
        
-    if len(set(config['lambda_schedule'])) != len(config['lambda_schedule']):
+    if len(set(lambda_schedule)) != len(lambda_schedule):
         print("Error: Looks like there are duplicated lambda values. That's too weird for me.", file=sys.stderr)
         exit(1)
 
     # Determine what our lambdas are based on the provided index
     # We have already ensured that the index is something within range
-    lambda1 = config['lambda_schedule'][args.lambda_index]
+    lambda1 = lambda_schedule[args.lambda_index]
     
     # If we are already at the last lambda, then this is the backward IDWS last window
     # and we won't actually enable IDWS for this window
-    if args.lambda_index == len(config['lambda_schedule']) - 1:
-        lambda2 = config['lambda_schedule'][-2]
+    if args.lambda_index == len(lambda_schedule) - 1:
+        lambda2 = lambda_schedule[-2]
     else:
-        lambda2 = config['lambda_schedule'][args.lambda_index+1]
+        lambda2 = lambda_schedule[args.lambda_index+1]
    
     # No IDWS for the first window since there isn't any previous window
     # And none for the very last window since that's the backwards last window
-    lambda_idws = config['lambda_schedule'][args.lambda_index-1] if lambda1 not in (0.0, 1.0) else None
+    lambda_idws = lambda_schedule[args.lambda_index-1] if lambda1 not in (0.0, 1.0) else None
         
     print(f'Lambdas are {lambda1} {lambda2} {lambda_idws}', file=sys.stderr)
         
@@ -417,7 +445,7 @@ You must have a myfep.include.namd file that will be included in the generated N
     # run NAMD one last time to generate the fepout.
     total_steps_here = 0
     footer_present = False
-    fepout_files = glob(f"{config['prefix']}{args.lambda_index:03d}*.fepout")
+    fepout_files = glob(f"{global_input_prefix}{args.lambda_index:03d}*.fepout")
     for fepout_fname in fepout_files:
         steps_here = num_steps_in_fepout(fepout_fname)
         if fepout_contains_footer(fepout_fname):
@@ -453,7 +481,7 @@ You must have a myfep.include.namd file that will be included in the generated N
    
     # Decide what we should continue from. Either the original configuration as specified
     # in the config YAML or the previous window
-    input_prefix = get_correct_restart_prefix(config, args.lambda_index)
+    input_prefix = get_correct_restart_prefix(config, global_input_prefix, args.lambda_index)
     if input_prefix is None:
         print("Error: Could not figure out coordinates to start from.", file=sys.stderr)
         print(f"Error: Please check that your {args.config_yaml} specifies files that actually exist.",
@@ -474,7 +502,7 @@ You must have a myfep.include.namd file that will be included in the generated N
     # Add a minimization step at the start of each group if user asked for it
     minimize_str = f"minimize {config['minimize']}" if is_first_window_in_group and config['minimize'] > 0 else ''
     # But don't minimize if we are resuming within the same window
-    if input_prefix == config['prefix']:
+    if input_prefix == global_input_prefix:
         minimize_str = ''
     
     # Perhaps we have enough steps but still need to generate a footer
@@ -486,11 +514,11 @@ You must have a myfep.include.namd file that will be included in the generated N
     if total_steps_needed > 0:
         print(f'We need {total_steps_needed} more steps.', file=sys.stderr)
         # Ensure that the lambda1 specified in any existing fepouts is correct
-        if config['lambda_schedule'].index(lambda1) != args.lambda_index:
+        if lambda_schedule.index(lambda1) != args.lambda_index:
             print(f'Error: lambda {lambda1} not in the right place in the configuration lambda_schedule', file=sys.stderr)
         print(f'Including {common_namd} in this new NAMD config.', file=sys.stderr)
         print(f'Resuming from: {input_prefix}', file=sys.stderr)
-        next_prefix = f"{config['prefix']}{args.lambda_index:03d}"
+        next_prefix = f"{global_input_prefix}{args.lambda_index:03d}"
         # If any existing fepout files, don't overwrite them
         if len(fepout_files) > 0:
             next_prefix = generate_next_prefix(config, fepout_files)
