@@ -274,7 +274,7 @@ def any_isfile(filenames):
 # First part is common prefix
 # Second part is a zero-padded 3-digit number
 # Third part one of 'a', 'b', ..., 'aa', 'ab', ...according to the base-26 column numbering scheme
-def generate_next_prefix(config, fnames):
+def generate_next_prefix(config, global_input_prefix, fnames):
     middles = [x.replace(global_input_prefix, '') for x in fnames]
     middles = [x.replace('.fepout', '') for x in middles]
     # Remove first group of digits, then take all trailing lowercase letters
@@ -521,7 +521,7 @@ You must have a myfep.include.namd file that will be included in the generated N
         next_prefix = f"{global_input_prefix}{args.lambda_index:03d}"
         # If any existing fepout files, don't overwrite them
         if len(fepout_files) > 0:
-            next_prefix = generate_next_prefix(config, fepout_files)
+            next_prefix = generate_next_prefix(config, global_input_prefix, fepout_files)
         print('Next prefix is:', next_prefix, file=sys.stderr)
         # Generate a new NAMD config file from a supplied template
         # When generating a NAMD config where none existed before, keep track of window groups...usually every 5 windows
