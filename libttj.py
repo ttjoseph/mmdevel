@@ -38,12 +38,119 @@ class AtomRecord:
         # We need a residue index value because the PDB resid is not guaranteed to be
         # unique! Some software just dumps in 
         self.resindex = None
-        
+
+    def __str__(self) -> str:
+        return f'ATOM  {self.atomid:>5s} {self.atomname:<4s} {self.resname:4s}{self.chain:1s}{self.resid:>4s}    {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}{self.occupancy:6.3f}{self.tempfactor:6.3f}      {self.segid:4s}'
+
     def write(self, f):
         """Writes this atom to an ATOM record to an open file."""
-        line = f'ATOM  {self.atomid:>5s} {self.atomname:<4s} {self.resname:4s}{self.chain:1s}{self.resid:>4s}    {self.x:8.3f}{self.y:8.3f}{self.z:8.3f}{self.occupancy:6.3f}{self.tempfactor:6.3f}      {self.segid:4s}\n'
-        # write() expects bytes, not a string, so we need to specify the encoding
-        f.write(line)
+        line = self.__str__()
+        print(line, file=f)
+
+class ShadyPDBQT:
+    """Shady representation of a PDBQT file, which probably represents docking output.
+
+    This is most likely produced by Autodock Vina, and has multiple models. Here is a skeletal example:
+
+        MODEL 1
+        ATOM ...
+        ATOM ...
+        BEGIN_RES FOO A 100
+        ATOM ...
+        ATOM ...
+        ATOM ...
+        END_RES FOO A 100
+        BEGIN_RES BAR A 200
+        ATOM ...
+        ATOM ...
+        END_RES BAR A 200
+        ENDMDL
+        MODEL 2
+        ...
+
+    Note that the ATOM lines between MODEL and the first BEGIN_RES represent the ligand.
+    This can be expected to contain all the heavy atoms in the ligand, but perhaps not
+    all the hydrogens.
+    Then, there are 0 or more BEGIN_RES...END_RES blocks, each of which contain a subset
+    of atoms in a particular residue in the protein.
+
+    So our task is, given a PDBQT docking output file, and a PDB of the protein that was
+    used in the docking calculation, for each MODEL generate a PDB file containing protein
+    and ligand. This task would be done by the caller, since it probably requires using
+    MDAnalysis or whatever.
+    """
+
+    def __init__(self, filename: str):
+        self.from_file(filename)
+
+    def from_file(self, filename: str):
+        with open(filename) as f:
+            lines = f.readlines()
+        return self.from_lines(lines)
+
+    def from_lines(self, lines: list):
+        self.models = []
+        current_atomgroup = []
+        ligand = None
+        residues = []
+        now_reading = None
+
+        line_counter = 0
+        for line in lines:
+            line_counter += 1
+            line = line.strip()
+            if line.startswith('MODEL'):
+                # We should not be reading any particular structure at the moment
+                if now_reading is not None:
+                    raise Exception(f'In the middle of reading {now_reading} but encountered a MODEL line. Missing ENMDL or END_RES?')
+                # But the ligand is first after a MODEL line
+                now_reading = 'ligand'
+                ligand = None
+                residues = []
+            elif line.startswith('ENDMDL'):
+                if now_reading == 'residue':
+                    raise Exception('Encountered ENDMDL before being done with a residue')
+
+                # We are done reading ligand
+                if now_reading == 'ligand':
+                    ligand = current_atomgroup
+                    current_atomgroup = []
+                    now_reading = None
+
+                # TODO: Any residues we read need to be saved as a group
+                self.models.append({'ligand': ligand, 'residues': residues})
+            elif line.startswith('BEGIN_RES'):
+                if now_reading == 'residue':
+                    raise Exception('Encountered a new BEGIN_RES before being done with a residue')
+                # Protein residue beginning. Close out previous residue or ligand and start a new residue
+                elif now_reading == 'ligand': # This functions as an "END_LIGAND"
+                    ligand = current_atomgroup
+                current_atomgroup = []
+                now_reading = 'residue'
+            elif line.startswith(('END_RES')):
+                residues.append(current_atomgroup)
+                current_atomgroup = []
+                now_reading = None
+            elif line.startswith('ATOM'):
+                if now_reading not in ['ligand', 'residue']:
+                    raise Exception('ATOM record exists outside of MODEL/BEGIN_RES-END_RES, which means the PDBQT file is malformed')
+                current_atomgroup.append(AtomRecord(line))
+
+        return self
+
+    def write_ligand(self, model_idx: int, f) -> None:
+        """Writes the ligand of a specific (zero-based) model_idx to an open file f.
+
+        Only writes the ATOM records, especially because we didn't store anything else.
+        """
+        for atom in self.models[model_idx]['ligand']:
+            atom.write(f)
+
+
+    def set_ligand_segid(self, model_idx: int, segid: str):
+        for atom in self.models[model_idx]['ligand']:
+            atom.segid = segid
+
 
 class ShadyPDB:
     """Shady representation of a Protein Data Bank (PDB) file that might not conform to the standard.
@@ -59,7 +166,7 @@ class ShadyPDB:
     job of following the PDB spec, but this means we can't use them when there are more than
     9999 residues in a single PDB segment.
     """
-    def __init__(self, filename):
+    def __init__(self, filename: str):
         self.atoms = []
         self.load_from_pdb(filename, verbose=False)
 
@@ -133,7 +240,7 @@ class ShadyPDB:
                 self.atoms[a_idx].resid = str(new_resid)
             new_atomid += 1
 
-    def rename_resname(self, from_resname, to_resname):
+    def rename_resname(self, from_resname: str, to_resname: str):
         """Rename all residues with a given resname to another resname.
 
         Useful for, e.g. HSD/HSE -> HIS.
@@ -164,7 +271,7 @@ class ShadyPDB:
         if we_opened_file:
             f.close()
         
-    def load_from_pdb(self, filename, verbose=True):
+    def load_from_pdb(self, filename: str, verbose=True):
         coords_set = set()
         pdb = open(filename)
         lines = pdb.readlines()
