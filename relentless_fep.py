@@ -543,6 +543,9 @@ You must have a myfep.include.namd file that will be included in the generated N
         exit(0)
 
 
+    # TODO: Check whether there is a footer in the fepouts for the previous window
+    # If there isn't, we shouldn't continue an incomplete window
+
     lambda_schedule, lambda1, lambda2, lambda_idws = figure_out_lambdas(config['lambda_schedule'], args.lambda_index)
     
     print(f'Lambdas are {lambda1} {lambda2} {lambda_idws}', file=sys.stderr)
@@ -593,7 +596,8 @@ alchLambda2 {lambda2}
 source {common_namd}
 # If the fepout frequency is higher than the restart frequency there could be duplicated steps
 # if resuming.  You might consider removing any such duplicated steps in postprocessing.
-firsttimestep {total_steps_here}
+# Also, assuming stepsPerCycle is 20
+firsttimestep {int(20 * int(total_steps_here/20))}
 {minimize_str}
 {equil_steps_str}
 run {total_steps_needed}
