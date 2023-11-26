@@ -22,11 +22,12 @@ def main():
     ap.add_argument('--around', type=float, default=7.0, help='How close a ligand can get to the solute')
     ap.add_argument('--out_pdb', default='flooded.pdb', help='Where to write the flooded ligands')
     ap.add_argument('--lipid_spec', default='resname POPC POPG POPE CHL1', help='Selection language for lipids (for MDAnalysis)')
+    ap.add_argument('--box-spec', default='resname TIP3', help='Atom selection for which bounding box will be calculated for ligand placement')
     args = ap.parse_args()
 
     # Load the solute and see if there any DUM atoms, which OPM puts there to denote top and bottom of lipid bilayer
     system_u = mda.Universe(args.system_pdb)
-    system_all = system_u.select_atoms('all')
+    system_all = system_u.select_atoms(args.box_spec)
     min_x, min_y, min_z = np.min(system_all.positions, axis=0)
     max_x, max_y, max_z = np.max(system_all.positions, axis=0)
 
