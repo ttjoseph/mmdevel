@@ -8,6 +8,7 @@ sbatch <<FOO
 #SBATCH -n 32
 
 export g16root=/nas1/sw
+export PGI_FASTMATH_CPU=haswell
 . \$g16root/g16/bsd/g16.profile
 
 g16 $1
