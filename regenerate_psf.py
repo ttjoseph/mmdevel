@@ -130,8 +130,8 @@ def main():
 
         psfgen_script +=f"""
 segment {segid} {{
-    first none
-    last none
+    # first none
+    # last none
     pdb {fname}
     {mutate_str}
 }}
