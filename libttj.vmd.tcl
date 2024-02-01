@@ -121,14 +121,15 @@ proc do_fep_preparations {ligspec {filename_suffix {}}} {
 	set lig_center [join [measure center $lig] ", "]
 
 	set fd [open "restraints.${filename_suffix}colvars" w]
-	puts $fd "# Colvars restraint setup for FEP for ligand \"$ligspec\"
+	puts $fd "# SAFEP FEP for ligand \"$ligspec\"
 
-# Distance of ligand from its binding site
+# Distance from Bound Conformation
 colvar {
-    name ligand_fb
+    name DBC
 
-    distance {
-        group1 {
+    rmsd {
+        refPositionsFile rest_ref.${filename_suffix}pdb       # ref protein coords for fitting. 
+        atoms {
             # Ligand atom numbers
             atomNumbers $nums
             rotateReference
@@ -140,38 +141,14 @@ colvar {
             } 
             refPositionsFile rest_ref.${filename_suffix}pdb       # ref protein coords for fitting. 
         }
-        group2 {
-            dummyAtom ($lig_center)
-        }
     }
-
 }
 
 harmonicWalls {
-    name ligand_fb_wall
-    colvars ligand_fb
-    upperWalls 5.0
+    name DBC_wall
+    colvars DBC
+    upperWalls 4.0
     upperWallConstant 100.0
-}
-
-# Aped from https://github.com/colvars/colvars/blob/master/examples/03_orientation.colvars.in
-colvar {
-    name dont_spin_protein
-    orientation {
-        atoms {
-            atomsCol O
-            atomsFile dont_spin_ref.${filename_suffix}pdb
-        }
-        refPositionsFile dont_spin_ref.${filename_suffix}pdb 
-    }
-}
-
-harmonic {
-    colvars dont_spin_protein
-    # Restraint center is the unit quaternion representing no rotation
-    centers (1.0, 0.0, 0.0, 0.0)
-    # Chosen at random more or less
-    forceConstant 5.0
 }
 "
 	puts "# Wrote restraints colvars file restraints.${filename_suffix}colvars"
@@ -699,4 +676,11 @@ proc move_by_center {seltext1 seltext2 overlapseltext} {
     $sel2 delete
     $overlap_b delete
     $overlap_a delete
+}
+
+# Returns the size of the bounding box containing sel.
+# Does not do any rotation. You can use VMD autopsf to find the rotation to minimize the bounding box.
+proc bounding_box_size {sel} {
+    set mm [measure minmax $sel]
+    vecsub [lindex $mm 1] [lindex $mm 0]
 }
