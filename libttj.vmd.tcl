@@ -132,8 +132,8 @@ colvar {
         atoms {
             # Ligand atom numbers
             atomNumbers $nums
-            rotateReference
-            centerReference
+            rotateReference yes
+            centerReference yes
             # fit to $restref_len protein atoms within $restref_radius A
             fittingGroup {
                 atomsCol O
