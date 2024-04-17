@@ -539,7 +539,7 @@ You must have a myfep.include.namd file that will be included in the generated N
         for i in range(len(lambda_schedule)):
             if steps_needed[i] > 0:
                 print(f'Windows #{i} at lambda1={lambda_schedule[i]} needs {steps_needed[i]} steps', file=sys.stderr)
-        print(f'{total_steps_here} timesteps done, and {total_steps_needed} timesteps to go: {total_steps_here*100/(total_steps_here+total_steps_needed):.0f}% done.', file=sys.stderr)
+        print(f'{total_steps_here:,} timesteps done, and {total_steps_needed:,} timesteps to go: {total_steps_here*100/(total_steps_here+total_steps_needed):.0f}% done.', file=sys.stderr)
         exit(0)
 
 
