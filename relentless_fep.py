@@ -364,10 +364,10 @@ def linspace(start, stop, num=50, endpoint=True):
 
 
 # Pure python array summation, also so user does not need numpy
-def array_sum(arr):
+def array_sum_posonly(arr):
     total = 0
     for x in arr:
-        total += x
+        total += x if x > 0 else 0
     return total
 
 
@@ -532,8 +532,8 @@ You must have a myfep.include.namd file that will be included in the generated N
     # If user doesn't specify a non-negative lambda index, they want to check the progress of the whole calculation
     if args.lambda_index < 0:
         steps_here, steps_needed = calc_global_progress(config)
-        total_steps_here = array_sum(steps_here)
-        total_steps_needed = array_sum(steps_needed)
+        total_steps_here = array_sum_posonly(steps_here)
+        total_steps_needed = array_sum_posonly(steps_needed)
         # Get the lambda schedule so we can report which lambdas are incomplete
         lambda_schedule, _, _, _ = figure_out_lambdas(config['lambda_schedule'], 0)
         for i in range(len(lambda_schedule)):
