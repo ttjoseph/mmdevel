@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # Creates config file for "next" NAMD simulation.
 # For example, if you have prod2.restart.coor, then it will use prod.skel.namd to
@@ -28,7 +28,7 @@ args = ap.parse_args()
 skel_filename = '%s.skel.namd' % args.prefix
 if os.path.isfile(skel_filename) is False:
     exit('Skeleton NAMD config file %s does not seem to be there' % skel_filename)
-files = sorted(glob.glob('%s*.restart.coor' % args.prefix), key=lambda k: '%09d' % int(re.search(r'\d+', k).group()))
+files = sorted(glob.glob('%s*.coor' % args.prefix), key=lambda k: '%09d' % int(re.search(r'\d+', k).group()))
 
 # No production restart file? Start from the end of equilibration
 start_from_equilibration = False
@@ -48,10 +48,11 @@ if len(files) == 0:
             break
 
 if len(files) == 0:
-    exit(f'Unable to find any NAMD restart files. I looked for {args.prefix}*.restart.coor and {inputnames_to_glob}')
+    exit(f'Unable to find any NAMD restart files. I looked for {args.prefix}*.coor and {inputnames_to_glob}')
 files = sorted(files, key=_filename_sort_key)
 last_restart_filename = files[-1]
 last_index = 0
+
 
 # Extract the last index number from the last restart filename
 # If we are starting from equilibration, suppress fancy prediction of filenames
