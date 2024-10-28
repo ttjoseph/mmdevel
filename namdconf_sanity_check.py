@@ -85,8 +85,10 @@ def load_namdconf(fname):
     print(f"INFO: Runs for {conf['run']} steps")
     if is_tcltrue(conf['langevin']):
         print(f"INFO: Uses Langevin dynamics")
-        print(f"INFO: Langevin period = {conf['langevinpistonperiod']}")
-        print(f"INFO: Langevin decay = {conf['langevinpistondecay']}")
+        if 'langevinpistonperiod' in conf:
+            print(f"INFO: Langevin period = {conf['langevinpistonperiod']}")
+        if 'langevinpistondecay' in conf:
+            print(f"INFO: Langevin decay = {conf['langevinpistondecay']}")
 
     # Nobody likes wrapAll
     if is_tcltrue(conf['wrapall']):
