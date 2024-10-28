@@ -14,6 +14,8 @@ homeslash=$HOME/
 nasslash=/nas1/work/
 path_on_server=${here/$homeslash/}
 path_on_server=${path_on_server/$nasslash/}
+
+RSYNCFLAGS="-avz --update --progress"
         
 # Remove trailing slash as necessary in each path spec
 paths=()
@@ -33,12 +35,12 @@ case $cmd in
         else
             pathstring="$paths"
         fi
-		echo rsync -avz --progress ${server}:${path_on_server}${pathstring} .
-	    rsync -avz --progress ${server}:${path_on_server}${pathstring} .
+		echo rsync ${RSYNCFLAGS} ${server}:${path_on_server}${pathstring} .
+	    rsync ${RSYNCFLAGS} ${server}:${path_on_server}${pathstring} .
 	;;
 	to)
         pathstring="${paths[@]}"
-		echo rsync -avz --progress ${pathstring} ${server}:${path_on_server}
-		rsync -avz --progress ${pathstring} ${server}:${path_on_server}
+		echo rsync ${RSYNCFLAGS} ${pathstring} ${server}:${path_on_server}
+		rsync ${RSYNCFLAGS} ${pathstring} ${server}:${path_on_server}
 	;;
 esac
