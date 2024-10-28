@@ -69,7 +69,7 @@ table {{ border-spacing: 0px }}
         print("</tr>")
 
 
-    print(f"""</table></body></html>""")
+    print(f"""</table><p>Generated with clustal_to_html.py</p></body></html>""")
 
 if __name__ == '__main__':
     main()
