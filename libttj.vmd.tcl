@@ -85,12 +85,12 @@ proc do_fep_preparations {ligspec {filename_suffix {}}} {
 	puts "# Wrote FEP atom selection disappear.${filename_suffix}fep"
 
 	# Tell colvars which atoms to use for reorientation
-	# Try to use a little under 80 atoms for the fit
+	# Try to use a particular number of atoms for the fitting
 	$all set beta 0
 	set restref_len 1000
 	set restref_radius 8
 	# The for loop construction in Tcl appears to be brain-damaged, so we use a while loop
-	while {$restref_len > 80} {
+	while {$restref_len > 42} {
 		set restref [atomselect top "protein and backbone within $restref_radius of ($ligspec)"]
 		set restref_len [llength [$restref list]]
 		set restref_radius [expr {$restref_radius - 0.1}]
