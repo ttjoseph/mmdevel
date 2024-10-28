@@ -128,10 +128,12 @@ def main():
                 if segid == mutate_segid:
                     mutate_str += f'mutate {mutate_resid} {mutate_to}\n'
 
+        # Don't let psfgen apply patches to non-protein segments
+        firstlastnone = """first none
+last none""" if not segid.startswith('PRO') else ''
         psfgen_script +=f"""
 segment {segid} {{
-    # first none
-    # last none
+    {firstlastnone}
     pdb {fname}
     {mutate_str}
 }}
